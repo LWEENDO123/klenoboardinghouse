@@ -1,0 +1,274 @@
+# core/security.py
+from datetime import datetime, timedelta, timezone
+import uuid
+import ipaddress
+import urllib.parse
+import socket
+import logging
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPBearer, OAuth2PasswordBearer
+from jose import jwt, JWTError
+from passlib.context import CryptContext
+from core.firebase import db
+
+# ---------------------------
+# Logging
+# ---------------------------
+logger = logging.getLogger("core.security")
+
+# ---------------------------
+# Password Hashing (bcrypt 72-byte safe)
+# ---------------------------
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+BCRYPT_BYTE_LIMIT = 72
+
+def _normalize_and_truncate_password(password: str) -> str:
+    """
+    Ensure password is a str, remove control characters, then truncate
+    safely to BCRYPT_BYTE_LIMIT bytes (not characters).
+    """
+    if password is None:
+        raise ValueError("Password cannot be None")
+
+    if not isinstance(password, str):
+        password = str(password)
+
+    # Remove non-printable/control characters (keeps spaces)
+    # This avoids hidden characters like ZERO-WIDTH causing surprises.
+    cleaned = "".join(ch for ch in password if ord(ch) >= 32)
+
+    # Encode to bytes and truncate to bcrypt byte limit.
+    b = cleaned.encode("utf-8")
+    before_len = len(b)
+    if before_len > BCRYPT_BYTE_LIMIT:
+        b = b[:BCRYPT_BYTE_LIMIT]
+        logger.debug(
+            "Password bytes exceeded bcrypt limit; truncating "
+            f"from {before_len} -> {len(b)} bytes"
+        )
+    else:
+        logger.debug("Password byte length OK: %d bytes", before_len)
+
+    # Decode back to string, ignoring partial UTF-8 byte sequences if present.
+    safe_str = b.decode("utf-8", "ignore")
+    logger.debug("Final safe password byte-length: %d", len(safe_str.encode("utf-8")))
+    return safe_str
+
+def get_password_hash(password: str) -> str:
+    """
+    Hash the provided password using bcrypt, after safely truncating it.
+    """
+    safe_pw = _normalize_and_truncate_password(password)
+    return pwd_context.hash(safe_pw)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """
+    Verify a plaintext password against stored bcrypt hash. Truncates the
+    plaintext same as hashing to ensure verification succeeds with same logic.
+    """
+    try:
+        safe_pw = _normalize_and_truncate_password(plain_password)
+        return pwd_context.verify(safe_pw, hashed_password)
+    except Exception as e:
+        logger.exception("Password verification error: %s", e)
+        # Re-raise a controlled exception so callers can handle as before.
+        raise
+
+# ---------------------------
+# JWT Configuration
+# ---------------------------
+def _load_secret_key() -> str:
+    """Load stable JWT secret key from Firestore CONFIG/jwt."""
+    cfg_ref = db.collection("CONFIG").document("jwt")
+    snap = cfg_ref.get()
+    if not snap.exists:
+        raise RuntimeError("Missing CONFIG/jwt document in Firestore")
+
+    data = snap.to_dict() or {}
+    key = data.get("SECRET_KEY")
+    if not key or len(key) < 32:
+        raise RuntimeError("Invalid or missing SECRET_KEY in Firestore CONFIG/jwt")
+
+    return key
+
+SECRET_KEY = _load_secret_key()
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+security = HTTPBearer()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+ADMIN_CREDENTIALS = {
+    "username": "adminL",
+    "password": "adminL"
+}
+
+# ---------------------------
+# Token Creation
+# ---------------------------
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+# ---------------------------
+# Dependency: Current User
+# ---------------------------
+async def get_current_user(request: Request, credentials=Depends(security)):
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+        sub = payload.get("sub")
+        role = payload.get("role")
+        user_id = payload.get("user_id")
+        university = payload.get("university")
+        premium = payload.get("premium", False)
+
+        if not sub or not role:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+
+        # Admin bypass
+        if role == "admin":
+            user = {
+                "email": sub,
+                "role": "admin",
+                "user_id": user_id or "ADMIN001",
+                "premium": True,
+                "university": university or "ALL"
+            }
+        else:
+            # Verify user exists in Firestore
+            if role == "student":
+                ref = db.collection("USERS").document(university).collection("students").document(user_id).get()
+            else:
+                ref = db.collection("LANDLORDS").document(user_id).get()
+
+            if not ref.exists:
+                raise HTTPException(status_code=401, detail="User not found")
+
+            data = ref.to_dict()
+            user = {
+                "email": sub,
+                "role": role,
+                "user_id": user_id,
+                "premium": data.get("premium", False),
+                "university": university
+            }
+
+        request.scope["user"] = user
+        return user
+
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    except Exception:
+        logger.exception("Error validating user")
+        raise HTTPException(status_code=500, detail="Error validating user")
+
+# ---------------------------
+# Role-Based Dependencies
+# ---------------------------
+async def get_current_admin(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
+
+async def get_current_landlord(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") not in ["landlord", "admin"]:
+        raise HTTPException(status_code=403, detail="Landlord or admin access required")
+    return current_user
+
+async def get_premium_student(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != "student" or not current_user.get("premium", False):
+        raise HTTPException(status_code=403, detail="Premium student required")
+    return current_user
+
+async def get_student_or_admin(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") not in ["student", "admin"]:
+        raise HTTPException(status_code=403, detail="Student or admin access required")
+    return current_user
+
+async def get_premium_student_or_admin(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") == "admin":
+        return current_user
+    if current_user.get("role") == "student" and current_user.get("premium", False):
+        return current_user
+    raise HTTPException(status_code=403, detail="Premium student or admin required")
+
+async def get_admin_or_landlord(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") not in ["admin", "landlord"]:
+        raise HTTPException(status_code=403, detail="Admin or landlord access required")
+    return current_user
+
+async def get_student_union_or_higher(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") in ["student_union", "admin"]:
+        return current_user
+    raise HTTPException(status_code=403, detail="Student union or admin access required")
+
+# ---------------------------
+# Admin Login Helper
+# ---------------------------
+async def get_admin_credentials(username: str, password: str):
+    """Verify static admin credentials and issue JWT."""
+    if username == ADMIN_CREDENTIALS["username"] and password == ADMIN_CREDENTIALS["password"]:
+        admin_data = {
+            "sub": username,
+            "role": "admin",
+            "user_id": "ADMIN001",
+            "university": "ALL"
+        }
+        return {
+            "access_token": create_access_token(admin_data),
+            "token_type": "bearer"
+        }
+    raise HTTPException(status_code=401, detail="Incorrect admin credentials")
+
+# ---------------------------
+# Location Tokens
+# ---------------------------
+def create_location_token(start_lat: float, start_lon: float, end_lat: float, end_lon: float, expires_minutes: int = 10):
+    expire = datetime.utcnow() + timedelta(minutes=expires_minutes)
+    payload = {
+        "start_lat": start_lat,
+        "start_lon": start_lon,
+        "end_lat": end_lat,
+        "end_lon": end_lon,
+        "exp": expire
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+def decode_location_token(token: str):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return {
+            "start_lat": payload.get("start_lat"),
+            "start_lon": payload.get("start_lon"),
+            "end_lat": payload.get("end_lat"),
+            "end_lon": payload.get("end_lon")
+        }
+    except JWTError:
+        return None
+
+# ---------------------------
+# Safe URL Validation
+# ---------------------------
+TRUSTED_DOMAINS = ["maps.googleapis.com", "yango.com"]
+
+def is_safe_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname
+    if not host:
+        return False
+    if any(host.endswith(d) for d in TRUSTED_DOMAINS):
+        return True
+    try:
+        ip = socket.gethostbyname(host)
+        ip_obj = ipaddress.ip_address(ip)
+        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_reserved:
+            return False
+    except Exception:
+        return False
+    return True

@@ -1,0 +1,11 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"                # Location of requirements.txt
+    schedule:
+      interval: "weekly"          # Check once a week
+    allow:
+      - dependency-type: "direct" # Only bump direct dependencies
+    ignore:
+      - dependency-name: "*"      # Ignore majors by default
+        update-types: ["version-update:semver-major"]
