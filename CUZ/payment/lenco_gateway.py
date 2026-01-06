@@ -25,6 +25,7 @@ from typing import Dict, Any, Optional, Tuple
 import httpx
 from fastapi import HTTPException, APIRouter
 from pydantic import BaseModel
+import os
 
 # ----------------------
 # Logging
@@ -40,11 +41,21 @@ logger.setLevel(logging.INFO)
 # Hard-coded config (as requested)
 # Replace these in future with env vars / secrets manager.
 # ----------------------
-LENCO_API_KEY = "3954ad8ed206c1a6a535c47f7d7a1a4262e7694674d0dd3e097337a73af0b73e"  # secret (dashboard)
-LENCO_PUBLIC_API_KEY = "pub-9f4a366d31ae309ea4728dbd2f36c6ca0feefc190e51286e"
-LENCO_WEBHOOK_SIGNATURE_KEY = "4af618f6fd789e32291ec5da3738dbfbba61bd097379fa70040beb94aafb2096"  # webhook signature key (hex)
+# CUZ/payment/lenco_config.py
+
+
+
+# ==============================
+# Lenco API Settings
+# ==============================
+
+LENCO_API_KEY = os.getenv("LENCO_API_KEY")  # secret (dashboard)
+LENCO_PUBLIC_API_KEY = os.getenv("LENCO_PUBLIC_API_KEY")  # public key
+LENCO_WEBHOOK_SIGNATURE_KEY = os.getenv("LENCO_WEBHOOK_SIGNATURE_KEY")  # webhook signature key (hex)
+
 # Base URL from your dashboard (includes /access/v2)
-LENCO_BASE_URL = "https://api.lenco.co/access/v2"
+LENCO_BASE_URL = os.getenv("LENCO_BASE_URL", "https://api.lenco.co/access/v2")
+
 
 # timeouts
 TIMEOUT = 30
