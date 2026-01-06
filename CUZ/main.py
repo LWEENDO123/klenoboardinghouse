@@ -4,7 +4,7 @@ from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 # Import the unified event router
-from yearbook.profile.events import router as event_router
+from Yearbook.profile.events import router as event_router
 
 
 # Import the notification router and the notify_upcoming_events function
