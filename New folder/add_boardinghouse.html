@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Add Boarding House</title>
+<style>
+body { font-family: Arial; background:#f4f4f4; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; }
+.container { background:white; padding:30px; border-radius:8px; width:100%; max-width:500px; box-shadow:0 0 10px rgba(0,0,0,0.1); }
+h2 { text-align:center; margin-bottom:20px; }
+label, input, select, textarea, button { width:100%; margin-bottom:10px; }
+button { background:#28a745; color:white; border:none; padding:10px; border-radius:4px; cursor:pointer; }
+button:hover { background:#218838; }
+.error, .loading { display:none; text-align:center; margin-top:10px; }
+.spinner { border:4px solid #f3f3f3; border-top:4px solid #28a745; border-radius:50%; width:24px; height:24px; animation:spin 1s linear infinite; margin:0 auto; }
+@keyframes spin { 0% { transform:rotate(0deg); } 100% { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="container">
+<h2>Add Boarding House</h2>
+<form id="add-boardinghouse-form" enctype="multipart/form-data">
+    <label>House Name</label><input type="text" name="houseName" required>
+    <label>Location</label><input type="text" name="houseLocation" required>
+    <label>University</label><input type="text" name="university" required>
+    <label>Landlord ID</label><input type="text" name="landlordId" required>
+    <label>Price 1</label><input type="text" name="price1" required>
+    <label>Price 2</label><input type="text" name="price2" required>
+    <label>Price 3</label><input type="text" name="price3" required>
+    <label>Price 4</label><input type="text" name="price4" required>
+    <label>GPS Coordinates</label><input type="text" name="GPSCoordinates" required>
+    <label>Yango Coordinates</label><input type="text" name="yangoCoordinates" required>
+    <label>Gender Male</label>
+    <select name="genderMale"><option value="false">No</option><option value="true">Yes</option></select>
+    <label>Gender Female</label>
+    <select name="genderFemale"><option value="false">No</option><option value="true">Yes</option></select>
+    <label>Gender Both</label>
+    <select name="genderBoth"><option value="false">No</option><option value="true">Yes</option></select>
+    <label>Shared Room 4</label><select name="sharedroom4"><option value="available">Available</option><option value="unavailable">Unavailable</option><option value="not_supported">Not Supported</option></select>
+    <label>Shared Room 3</label><select name="sharedroom3"><option value="available">Available</option><option value="unavailable">Unavailable</option><option value="not_supported">Not Supported</option></select>
+    <label>Shared Room 2</label><select name="sharedroom2"><option value="available">Available</option><option value="unavailable">Unavailable</option><option value="not_supported">Not Supported</option></select>
+    <label>Single Room</label><select name="singleroom"><option value="available">Available</option><option value="unavailable">Unavailable</option><option value="not_supported">Not Supported</option></select>
+    <label>Amenities (comma-separated)</label><textarea name="amenities" required></textarea>
+    <label>Upload Images</label><input type="file" name="images" multiple required>
+    <label>Rating</label><input type="number" name="rating" min="0" max="5" step="0.1" value="0.0" required>
+    <button type="submit">Submit</button>
+    <div class="loading" id="loading"><div class="spinner"></div><p>Submitting...</p></div>
+    <div class="error" id="error-message"></div>
+</form>
+</div>
+
+<script>
+const form = document.getElementById('add-boardinghouse-form');
+form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const loading = document.getElementById('loading');
+    const error = document.getElementById('error-message');
+    loading.style.display='block'; error.style.display='none';
+
+    const token = localStorage.getItem('token');
+    if(!token){ error.textContent='Please log in as landlord.'; error.style.display='block'; loading.style.display='none'; return; }
+
+    const formData = new FormData(form); // includes files automatically
+
+    try{
+        const res = await fetch('http://localhost:8000/home/add-boardinghouse',{
+            method:'POST',
+            body: formData,
+            headers: {'Authorization':`Bearer ${token}`}
+        });
+        const data = await res.json();
+        loading.style.display='none';
+        if(res.ok){ alert('Boarding house added successfully!'); window.location.href='/home.html?university='+formData.get('university'); }
+        else{ error.textContent = data.detail || 'Submission failed'; error.style.display='block'; }
+    }catch(err){ loading.style.display='none'; error.textContent='Error: '+err.message; error.style.display='block'; }
+});
+</script>
+</body>
+</html>
