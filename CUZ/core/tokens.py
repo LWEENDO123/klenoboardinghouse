@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timedelta
 from jose import jwt
 from core.firebase import db
-from core.security import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
+from core.security import get_secret_key, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
 
 def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     """
@@ -12,7 +12,7 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(to_encode, get_secret_key(), algorithm=ALGORITHM)
 
 def create_refresh_token(user_id: str, role: str, university: str, ip: str, user_agent: str) -> str:
     """
@@ -29,7 +29,7 @@ def create_refresh_token(user_id: str, role: str, university: str, ip: str, user
         "university": university,
         "exp": expire,
     }
-    encoded = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    encoded = jwt.encode(payload, get_secret_key(), algorithm=ALGORITHM)
 
     # Store metadata in Firestore
     db.collection("REFRESH_TOKENS").document(jti).set({
