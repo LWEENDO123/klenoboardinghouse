@@ -2,6 +2,7 @@
 
 import os
 import json
+import base64
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 
@@ -11,16 +12,18 @@ from firebase_admin import credentials, firestore, storage
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "boardinghouse-af901")
 FIREBASE_BUCKET = os.getenv("FIREBASE_BUCKET", f"{FIREBASE_PROJECT_ID}.appspot.com")
 
-# Expect the full JSON string in env var
-FIREBASE_SERVICE_ACCOUNT_JSON = os.getenv("FIREBASE_SERVICE_ACCOUNT")
+# Expect the base64-encoded JSON string in env var
+FIREBASE_SERVICE_ACCOUNT_BASE64 = os.getenv("FIREBASE_SERVICE_ACCOUNT_BASE64")
 
 # ------------------------------
 # Firebase Admin initialization
 # ------------------------------
-if not FIREBASE_SERVICE_ACCOUNT_JSON:
-    raise FileNotFoundError("FIREBASE_SERVICE_ACCOUNT env var not set")
+if not FIREBASE_SERVICE_ACCOUNT_BASE64:
+    raise FileNotFoundError("FIREBASE_SERVICE_ACCOUNT_BASE64 env var not set")
 
-firebase_cred_dict = json.loads(FIREBASE_SERVICE_ACCOUNT_JSON)
+# Decode base64 back into JSON
+decoded_json = base64.b64decode(FIREBASE_SERVICE_ACCOUNT_BASE64).decode("utf-8")
+firebase_cred_dict = json.loads(decoded_json)
 firebase_cred = credentials.Certificate(firebase_cred_dict)
 
 if not firebase_admin._apps:  # Prevent re-init
