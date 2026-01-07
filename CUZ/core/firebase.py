@@ -1,6 +1,7 @@
 # file: CUZ/core/firebase.py
 
 import os
+import json
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 from google.cloud import firestore as gcp_firestore
@@ -9,20 +10,22 @@ from google.oauth2 import service_account
 # ------------------------------
 # Environment variables
 # ------------------------------
-FIREBASE_KEY_PATH = os.getenv("FIREBASE_KEY_PATH")  # Path to Firebase Admin SDK JSON
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "boardinghouse-af901")
 FIREBASE_BUCKET = os.getenv("FIREBASE_BUCKET", f"{FIREBASE_PROJECT_ID}.appspot.com")
 
-GCP_SERVICE_ACCOUNT_FILE = os.getenv("GCP_SERVICE_ACCOUNT_FILE")  # Path to GCP service account JSON
-GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", FIREBASE_PROJECT_ID)
+# Expect the full JSON string in env var
+FIREBASE_SERVICE_ACCOUNT_JSON = os.getenv("FIREBASE_SERVICE_ACCOUNT")
+GCP_SERVICE_ACCOUNT_JSON = os.getenv("GCP_SERVICE_ACCOUNT")
 
 # ------------------------------
 # Firebase Admin initialization
 # ------------------------------
-if not FIREBASE_KEY_PATH or not os.path.exists(FIREBASE_KEY_PATH):
-    raise FileNotFoundError(f"Firebase service account key not found at: {FIREBASE_KEY_PATH or '<unset>'}")
+if not FIREBASE_SERVICE_ACCOUNT_JSON:
+    raise FileNotFoundError("FIREBASE_SERVICE_ACCOUNT env var not set")
 
-firebase_cred = credentials.Certificate(FIREBASE_KEY_PATH)
+firebase_cred_dict = json.loads(FIREBASE_SERVICE_ACCOUNT_JSON)
+firebase_cred = credentials.Certificate(firebase_cred_dict)
+
 if not firebase_admin._apps:  # Prevent re-init
     app = firebase_admin.initialize_app(firebase_cred, {
         "projectId": FIREBASE_PROJECT_ID,
@@ -41,13 +44,14 @@ print("🔥 Firebase Storage bucket initialized:", bucket.name)
 # ------------------------------
 # Direct GCP Firestore client
 # ------------------------------
-if not GCP_SERVICE_ACCOUNT_FILE or not os.path.exists(GCP_SERVICE_ACCOUNT_FILE):
-    raise FileNotFoundError(f"GCP service account key not found at: {GCP_SERVICE_ACCOUNT_FILE or '<unset>'}")
+if not GCP_SERVICE_ACCOUNT_JSON:
+    raise FileNotFoundError("GCP_SERVICE_ACCOUNT env var not set")
 
-gcp_credentials = service_account.Credentials.from_service_account_file(GCP_SERVICE_ACCOUNT_FILE)
+gcp_cred_dict = json.loads(GCP_SERVICE_ACCOUNT_JSON)
+gcp_credentials = service_account.Credentials.from_service_account_info(gcp_cred_dict)
 
 # Direct Firestore client with explicit credentials
-gcp_db = gcp_firestore.Client(credentials=gcp_credentials, project=GCP_PROJECT_ID)
+gcp_db = gcp_firestore.Client(credentials=gcp_credentials, project=FIREBASE_PROJECT_ID)
 print("🔥 GCP Firestore client project:", gcp_db.project)
 
 # ------------------------------
