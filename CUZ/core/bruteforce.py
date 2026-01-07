@@ -1,6 +1,6 @@
 # CUZ/ADMIN/core/bruteforce.py
 from datetime import datetime, timedelta, timezone
-from core.firebase import db
+from CUZ.core.firebase import db
 
 MAX_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
