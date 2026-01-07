@@ -9,7 +9,8 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, OAuth2PasswordBearer
 from jose import jwt, JWTError
 from passlib.context import CryptContext
-from core.firebase import db
+from CUZ.core.firebase import db
+
 
 # ---------------------------
 # Logging
