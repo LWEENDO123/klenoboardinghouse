@@ -497,7 +497,8 @@ async def admin_login(
 # REFRESH TOKEN ENDPOINT
 # ---------------------------
 # USERS/user_routes.py
-from core.tokens import create_access_token, rotate_refresh_token, is_refresh_token_valid
+from CUZ.core.tokens import create_access_token, rotate_refresh_token, is_refresh_token_valid
+
 from jose import jwt, JWTError
 
 
