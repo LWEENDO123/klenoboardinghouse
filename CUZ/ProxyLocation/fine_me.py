@@ -5,14 +5,16 @@ from typing import List, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from google.cloud import firestore
 
-from core.firebase import db
-from core.config import CLUSTERS
-from USERS.models import (
+from CUZ.core.firebase import db
+from CUZ.core.config import CLUSTERS
+from CUZ.USERS.models import (
     BoardingHouseHomepage,
     BoardingHouseSummary,
     BoardingHouseNavigation,
 )
-from core.security import get_student_or_admin, get_premium_student_or_admin
+from CUZ.core.security import get_student_or_admin, get_premium_student_or_admin
+from CUZ.routers.region_router import recalculate_origin
+
 
 # 🔗 Regional anchor recalculation
 # Ensure routers is a proper package (routers/__init__.py present) and main.py registers it.
