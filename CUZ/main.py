@@ -55,8 +55,10 @@ from payment.payment_orchestrator import (
 )
 
 # Firebase + security
-from core.firebase import db  # ensures firebase initialized
-import core.security
+# Firebase + security
+from CUZ.core.firebase import db   # ✅ fixed path
+import CUZ.core.security           # ✅ fixed path
+
 from ADMIN.api_keys_bootstrap import ensure_initial_admin_api_key
 
 # App initialization
