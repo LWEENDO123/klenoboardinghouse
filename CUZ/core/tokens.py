@@ -1,9 +1,18 @@
 # core/tokens.py
+# file: CUZ/core/tokens.py
 import uuid
 from datetime import datetime, timedelta
 from jose import jwt
-from core.firebase import db
-from core.security import get_secret_key, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
+
+# ✅ Use CUZ prefix for internal modules
+from CUZ.core.firebase import db
+from CUZ.core.security import (
+    get_secret_key,
+    ALGORITHM,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+)
+
 
 def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     """
