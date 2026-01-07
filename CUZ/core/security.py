@@ -11,6 +11,7 @@ from fastapi.security import HTTPBearer, OAuth2PasswordBearer
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from CUZ.core.firebase import db
+from CUZ.USERS.firebase import db
 
 # ---------------------------
 # Logging
