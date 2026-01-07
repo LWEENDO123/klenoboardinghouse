@@ -1,6 +1,6 @@
 # CUZ/ADMIN/core/cleanup
 from datetime import datetime, timezone, timedelta
-from core.firebase import db
+from CUZ.core.firebase import db
 
 def cleanup_expired_tokens():
     """
