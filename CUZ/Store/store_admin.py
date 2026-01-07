@@ -1,8 +1,8 @@
 # Store/store_admin.py
 from fastapi import APIRouter, Depends, HTTPException
-from core.firebase import db
+from CUZ.core.firebase import db
 from .models import Store
-from core.security import get_current_admin
+from CUZ.core.security import get_current_admin
 
 router = APIRouter(prefix="/admin/store", tags=["admin-store"])
 
