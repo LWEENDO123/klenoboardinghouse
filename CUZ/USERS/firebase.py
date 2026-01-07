@@ -92,7 +92,10 @@ async def get_student_by_id(student_id: str, university: str):
         raise HTTPException(status_code=500, detail=f"Firebase error: {str(e)}")
     
 
-  async def user_exists(university: str, email: str, phone: str, first_name: str, last_name: str) -> bool:
+  # ---------------------------
+# User existence helper
+# ---------------------------
+async def user_exists(university: str, email: str, phone: str, first_name: str, last_name: str) -> bool:
     """
     Check if a user already exists in any collection (students, landlords, union members)
     by email, phone number, or name combination.
@@ -129,6 +132,7 @@ async def get_student_by_id(student_id: str, university: str):
     if list(landlord_query): return True
 
     return False
+
   
 
 
