@@ -4,7 +4,8 @@ from PIL import Image
 import io
 import uuid
 from datetime import timedelta
-from core.firebase import bucket   # ✅ use the bucket from core/firebase.py
+from CUZ.core.firebase import bucket
+   # ✅ use the bucket from core/firebase.py
 
 def compress_to_720(image_bytes: bytes, quality: int = 80) -> bytes:
     """
