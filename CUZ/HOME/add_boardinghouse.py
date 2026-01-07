@@ -1,13 +1,14 @@
-# HOME/add_boardinghouse.py
+# file: CUZ/HOME/add_boardinghouse.py
 from fastapi import APIRouter, Depends, HTTPException, Body
-from CUZ.HOME.models import BoardingHouse
-from core.firebase import db
-from core.config import CLUSTERS
+from CUZ.HOME.models import BoardingHouse              # ✅ models inside CUZ/HOME
+from CUZ.core.firebase import db                       # ✅ firebase inside CUZ/core
+from CUZ.core.config import CLUSTERS                   # ✅ config inside CUZ/core
 from datetime import datetime
 from firebase_admin import messaging
-from USERS.security import get_current_admin, get_admin_or_landlord
+from CUZ.USERS.security import get_current_admin, get_admin_or_landlord  # ✅ security inside CUZ/USERS
 import random
 import string
+
 
 router = APIRouter(prefix="/boardinghouse", tags=["boardinghouse"])
 
