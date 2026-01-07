@@ -78,24 +78,28 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # ---------------------------
 # JWT Configuration
 # ---------------------------
-def _load_secret_key() -> str:
-    """Load stable JWT secret key from Firestore CONFIG/jwt."""
-    cfg_ref = db.collection("CONFIG").document("jwt")
-    snap = cfg_ref.get()
-    if not snap.exists:
-        raise RuntimeError("Missing CONFIG/jwt document in Firestore")
-
-    data = snap.to_dict() or {}
-    key = data.get("SECRET_KEY")
-    if not key or len(key) < 32:
-        raise RuntimeError("Invalid or missing SECRET_KEY in Firestore CONFIG/jwt")
-
-    return key
-
-SECRET_KEY = _load_secret_key()
+SECRET_KEY = None
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+def get_secret_key() -> str:
+    """Lazy-load stable JWT secret key from Firestore CONFIG/jwt."""
+    global SECRET_KEY
+    if SECRET_KEY is None:
+        cfg_ref = db.collection("CONFIG").document("jwt")
+        snap = cfg_ref.get()
+        if not snap.exists:
+            raise RuntimeError("Missing CONFIG/jwt document in Firestore")
+
+        data = snap.to_dict() or {}
+        key = data.get("SECRET_KEY")
+        if not key or len(key) < 32:
+            raise RuntimeError("Invalid or missing SECRET_KEY in Firestore CONFIG/jwt")
+
+        SECRET_KEY = key
+        logger.info("Loaded SECRET_KEY from Firestore")
+    return SECRET_KEY
 
 security = HTTPBearer()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -104,6 +108,7 @@ ADMIN_CREDENTIALS = {
     "username": "adminL",
     "password": "adminL"
 }
+
 
 # ---------------------------
 # Token Creation
