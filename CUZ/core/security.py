@@ -1,4 +1,5 @@
-# core/security.py
+# file: CUZ/core/security.py
+import os
 from datetime import datetime, timedelta, timezone
 import uuid
 import ipaddress
@@ -10,7 +11,6 @@ from fastapi.security import HTTPBearer, OAuth2PasswordBearer
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from CUZ.core.firebase import db
-
 
 # ---------------------------
 # Logging
@@ -35,7 +35,6 @@ def _normalize_and_truncate_password(password: str) -> str:
         password = str(password)
 
     # Remove non-printable/control characters (keeps spaces)
-    # This avoids hidden characters like ZERO-WIDTH causing surprises.
     cleaned = "".join(ch for ch in password if ord(ch) >= 32)
 
     # Encode to bytes and truncate to bcrypt byte limit.
@@ -56,32 +55,28 @@ def _normalize_and_truncate_password(password: str) -> str:
     return safe_str
 
 def get_password_hash(password: str) -> str:
-    """
-    Hash the provided password using bcrypt, after safely truncating it.
-    """
+    """Hash the provided password using bcrypt, after safely truncating it."""
     safe_pw = _normalize_and_truncate_password(password)
     return pwd_context.hash(safe_pw)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """
-    Verify a plaintext password against stored bcrypt hash. Truncates the
-    plaintext same as hashing to ensure verification succeeds with same logic.
-    """
+    """Verify a plaintext password against stored bcrypt hash."""
     try:
         safe_pw = _normalize_and_truncate_password(plain_password)
         return pwd_context.verify(safe_pw, hashed_password)
     except Exception as e:
         logger.exception("Password verification error: %s", e)
-        # Re-raise a controlled exception so callers can handle as before.
         raise
 
 # ---------------------------
 # JWT Configuration
 # ---------------------------
-SECRET_KEY = None
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-REFRESH_TOKEN_EXPIRE_DAYS = 7
+# ✅ Load from environment for dev, fallback to Firestore in get_secret_key()
+SECRET_KEY = os.getenv("SECRET_KEY")  
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+
 
 def get_secret_key() -> str:
     """Lazy-load stable JWT secret key from Firestore CONFIG/jwt."""
