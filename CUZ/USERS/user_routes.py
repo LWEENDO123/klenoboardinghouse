@@ -4,7 +4,7 @@ from fastapi import (
     Request, Form, Header,Response,
 )
 # USERS/user_routes.py
-from CUZ.ADMIN.core.config import ACCESS_TOKEN_EXPIRE_MINUTES
+from CUZ.HOME.add_boardinghouse import CLUSTERS, ACCESS_TOKEN_EXPIRE_MINUTES
 
 
 from jose import jwt, JWTError
