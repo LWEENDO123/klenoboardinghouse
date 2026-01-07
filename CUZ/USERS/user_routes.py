@@ -9,7 +9,8 @@ from CUZ.core.security import ACCESS_TOKEN_EXPIRE_MINUTES
 
 
 from jose import jwt, JWTError
-from core.security import SECRET_KEY, ALGORITHM
+from CUZ.core.security import SECRET_KEY, ALGORITHM
+
 from core.tokens import (
     create_refresh_token,   # <-- add this
     rotate_refresh_token,
