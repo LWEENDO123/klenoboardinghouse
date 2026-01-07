@@ -1,8 +1,8 @@
 # PINNED/pinned.py
 from fastapi import APIRouter, Depends, HTTPException
-from core.firebase import db
+from CUZ.core.firebase import db
 from firebase_admin import messaging, firestore
-from core.security import get_premium_student
+from CUZ.core.security import get_premium_student
 
 router = APIRouter(prefix="/pinned", tags=["pinned"])
 
