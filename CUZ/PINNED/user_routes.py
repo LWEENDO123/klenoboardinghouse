@@ -1,8 +1,10 @@
 # PINNED/user_routes.py
 from fastapi import APIRouter, Depends, HTTPException, Query
-from USERS.firebase import db  # Firestore client from USERS/firebase.py
-from HOME.models import BoardingHouseHomepage  # Pydantic model for summaries
-from core.security import get_premium_student  # ✅ use the unified version
+
+from CUZ.USERS.firebase import db
+from CUZ.HOME.models import BoardingHouseHomepage
+from CUZ.core.security import get_premium_student
+# ✅ use the unified version
 
 router = APIRouter(prefix="/pinned", tags=["pinned"])
 
