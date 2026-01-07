@@ -1,10 +1,12 @@
 #Proxylocation/ssecurity.py
 from fastapi import Depends, HTTPException
-from USERS.security import get_current_user  # Base JWT decoder from USERS
-from USERS.security import (
+
+from CUZ.USERS.security import (
+    get_current_user,
     get_student_or_admin,
     get_premium_student_or_admin,
 )
+
 
 
 async def get_student_or_admin(current_user: dict = Depends(get_current_user)) -> dict:
