@@ -1,35 +1,21 @@
 # USERS/user_routes.py
 from fastapi import (
     APIRouter, HTTPException, status, Depends,
-    Request, Form, Header,Response,
+    Request, Form, Header, Response,
 )
-# USERS/user_routes.py
-from CUZ.HOME.add_boardinghouse import CLUSTERS
-from CUZ.core.security import ACCESS_TOKEN_EXPIRE_MINUTES
-
 
 from jose import jwt, JWTError
-from CUZ.core.security import SECRET_KEY, ALGORITHM
-
-from CUZ.core.tokens import (
-    create_refresh_token,
-    rotate_refresh_token,
-    revoke_refresh_token,
-    is_refresh_token_valid,
-)
-
-
-from fastapi import APIRouter
-from CUZ.core.firebase import db
-from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
 from pydantic import EmailStr
+from fastapi.security import OAuth2PasswordRequestForm
 
-from .models import StudentSignup, LandlordSignup
-from core.rate_limit import limit
-from core.bruteforce import record_failed_attempt, is_account_locked, reset_attempts
-from core.audit import log_event
-from core.security import (
+# ✅ Project imports
+from CUZ.HOME.add_boardinghouse import CLUSTERS
+from CUZ.core.firebase import db
+from CUZ.core.security import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    SECRET_KEY,
+    ALGORITHM,
     get_current_user,
     get_student_or_admin,
     get_premium_student_or_admin,
@@ -39,8 +25,18 @@ from core.security import (
     create_access_token,
     get_password_hash,
     verify_password,
-    #rotate_refresh_token,
 )
+from CUZ.core.tokens import (
+    create_refresh_token,
+    rotate_refresh_token,
+    revoke_refresh_token,
+    is_refresh_token_valid,
+)
+from CUZ.core.rate_limit import limit
+from CUZ.core.bruteforce import record_failed_attempt, is_account_locked, reset_attempts
+from CUZ.core.audit import log_event
+
+from .models import StudentSignup, LandlordSignup
 from .firebase import (
     save_student_to_firebase,
     save_landlord_to_firebase,
@@ -48,8 +44,9 @@ from .firebase import (
     get_landlord_by_id,
     get_student_by_email,
     get_landlord_by_email,
-    get_union_member_by_email,   # ✅ new import
+    get_union_member_by_email,
 )
+
 
 import logging
 import logging
