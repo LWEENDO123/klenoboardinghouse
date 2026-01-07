@@ -1,26 +1,38 @@
 
-# file: C:\Users\lweendo\project\baodinghouse\CUZ\main.py
+# file: CUZ/main.py
+
 from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-# Import the unified event router
+
+# Routers
 from CUZ.yearbook.profile.events import router as event_router
-
-
-
-# Import the notification router and the notify_upcoming_events function
-from CUZ.Notification.notification import router as notification_router
-from CUZ.Notification.notification import notify_upcoming_events
-
+from CUZ.Notification.notification import router as notification_router, notify_upcoming_events
 from CUZ.USERS.user_routes import router as user_router, get_current_user
+from CUZ.USERS.Appkey import verify_api_key
+from CUZ.Available.check_boarding import router as available_router
+from CUZ.PINNED.pinned import router as pinned_router
+from CUZ.PINNED import user_routes as pinned_user_routes
+from CUZ.HOME.add_boardinghouse import router as boardinghouse_router
+from CUZ.HOME.user_routes import router as user_home_router
+from CUZ.Store.store import router as store_router
+from CUZ.ProxyLocation.fine_me import router as proxily_router
 
+# Payment modules
+from CUZ.payment.firestore_adapter import get_student_record, save_student_record
+from CUZ.payment.lenco_gateway import router as lenco_router
+from CUZ.payment.payment_orchestrator import (
+    check_and_update_premium_expiry,
+    process_payout,
+)
 
+# Firebase + security
+from CUZ.core.firebase import db
+import CUZ.core.security
 
+from CUZ.ADMIN.api_keys_bootstrap import ensure_initial_admin_api_key
 
-
-
-
-
+# Rate limiting
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -34,33 +46,6 @@ from dateutil.relativedelta import relativedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pydantic import BaseModel, constr
 
-# Routers & dependencies (existing in your project)
-from USERS.user_routes import router as user_router
-from USERS.Appkey import verify_api_key
-from Available.check_boarding import router as available_router
-
-from Notification.notification import router as notification_router
-from PINNED.pinned import router as pinned_router
-from PINNED import user_routes as pinned_user_routes
-from HOME.add_boardinghouse import router as boardinghouse_router
-from HOME.user_routes import router as user_home_router
-from Store.store import router as store_router
-from ProxyLocation.fine_me import router as proxily_router
-
-# Payment modules
-from payment.firestore_adapter import get_student_record, save_student_record
-from payment.lenco_gateway import router as lenco_router
-from payment.payment_orchestrator import (
-    check_and_update_premium_expiry,
-     process_payout
-)
-
-# Firebase + security
-# Firebase + security
-from CUZ.core.firebase import db   # ✅ fixed path
-import CUZ.core.security           # ✅ fixed path
-
-from ADMIN.api_keys_bootstrap import ensure_initial_admin_api_key
 
 # App initialization
 app = FastAPI(title="Baodinghouse API")
