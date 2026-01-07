@@ -4,7 +4,7 @@ This module simply re‑exports the security dependencies from core/security
 so Store endpoints can use the same JWT validation and role checks.
 """
 
-from core.security import (
+from CUZ.core.security import (
     get_current_user,
     get_current_admin,
     get_current_landlord,
