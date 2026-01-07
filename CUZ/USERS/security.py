@@ -1,4 +1,5 @@
 #USERS/security.py
+from CUZ.USERS.firebase import db
 import os
 from fastapi import Depends, HTTPException, status, Form
 from fastapi.security import OAuth2PasswordBearer
