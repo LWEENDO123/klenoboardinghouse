@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from typing import Optional, Dict, Any
 from datetime import datetime
-from core.firebase import db
+from CUZ.core.firebase import db
 from firebase_admin import messaging
 from google.cloud import firestore
 from core.security import get_admin_or_landlord, get_student_or_admin
