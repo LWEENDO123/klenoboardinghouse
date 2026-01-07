@@ -9,7 +9,7 @@ from pydantic import (
 )
 from typing import Optional, List
 from CUZ.utils.sanitize import SanitizedModel
-from core.security import is_safe_url
+from CUZ.core.security import is_safe_url
 from datetime import datetime
 import random
 import string
