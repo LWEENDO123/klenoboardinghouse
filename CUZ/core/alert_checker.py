@@ -1,7 +1,7 @@
 # CUZ/ADMIN/core/alert_checker.py
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
-from core.firebase import db
+from CUZ.core.firebase import db
 
 MFA_FAIL_THRESHOLD = 3
 AUTH_FAIL_THRESHOLD = 10
