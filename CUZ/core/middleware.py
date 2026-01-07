@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 import uuid
 from jose import jwt, JWTError
 
-from core.firebase import db
-from core.tokens import SECRET_KEY, ALGORITHM, is_refresh_token_valid, revoke_refresh_token
+from CUZ.core.firebase import db
+from CUZ.core.tokens import SECRET_KEY, ALGORITHM, is_refresh_token_valid, revoke_refresh_token
 
 async def log_event(actor: str, action: str, role: str = None, ip: str = None, user_agent: str = None, metadata: dict = None):
     log_id = str(uuid.uuid4())
