@@ -415,3 +415,8 @@ async def mark_message_read(
 
 # Include messages router (protected)
 app.include_router(messages_router, dependencies=[auth_dependency])
+
+app = FastAPI() # Example route 
+@app.get("/health") 
+def health_check(): 
+    return {"status": "ok"}
