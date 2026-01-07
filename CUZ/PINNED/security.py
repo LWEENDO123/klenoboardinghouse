@@ -1,6 +1,6 @@
 #PINNED/security.py
 from fastapi import Depends, HTTPException, status
-from USERS.security import get_current_user  # Reuse base JWT decoder from USERS/security.py
+from CUZ.USERS.security import get_current_user  # Reuse base JWT decoder from USERS/security.py
 
 async def get_premium_student(current_user: dict = Depends(get_current_user)):
     """
