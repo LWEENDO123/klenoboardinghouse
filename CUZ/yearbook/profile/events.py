@@ -2,20 +2,28 @@ from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query, 
 from typing import List, Optional
 from datetime import datetime
 import random
+
+# ✅ Routers inside CUZ
 from CUZ.routers.region_router import recalculate_origin
 
-
-from core.firebase import db
+# ✅ Core modules inside CUZ/core
+from CUZ.core.firebase import db
 from firebase_admin import messaging
-from core.security import get_student_or_admin, get_student_union_or_higher
-from Event.models import Event, EventResponse
+from CUZ.core.security import get_student_or_admin, get_student_union_or_higher
 
-# Utilities (one level up from profile/)
+# ✅ Event models (adjust depending on your folder structure)
+# If models are in CUZ/Event/models.py:
+from CUZ.Event.models import Event, EventResponse
+# Or if they’re in CUZ/yearbook/Event/models.py:
+# from CUZ.yearbook.Event.models import Event, EventResponse
+
+# ✅ Local utilities (relative imports inside yearbook/profile/)
 from .security import validate_image
 from .compress import compress_to_720
 from .storage import upload_compressed_image
 from .identity import assert_student_exists, assert_owns_resource_or_admin
 from .event_utils import assert_event_portal_open, today_event_id
+
 
 router = APIRouter(prefix="/event", tags=["Events"])
 
