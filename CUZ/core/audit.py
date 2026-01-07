@@ -1,7 +1,7 @@
 # CUZ/ADMIN/core/audit.py
 from datetime import datetime, timezone
 import uuid
-from core.firebase import db   # or swap with SQLAlchemy if using Postgres
+from CUZ.core.firebase import db   # or swap with SQLAlchemy if using Postgres
 
 def log_event(
     actor: str,
