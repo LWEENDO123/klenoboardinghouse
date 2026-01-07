@@ -2,7 +2,8 @@ import random
 import string
 import logging
 from fastapi import HTTPException
-from core.firebase import db  # Shared Firestore client from core (no re-init)
+from CUZ.core.firebase import db  # Shared Firestore client from core (no re-init)
+  # Shared Firestore client from core (no re-init)
 
 logger = logging.getLogger("app.firebase")
 logger.setLevel(logging.INFO)
