@@ -11,12 +11,13 @@ from CUZ.core.security import ACCESS_TOKEN_EXPIRE_MINUTES
 from jose import jwt, JWTError
 from CUZ.core.security import SECRET_KEY, ALGORITHM
 
-from core.tokens import (
-    create_refresh_token,   # <-- add this
+from CUZ.core.tokens import (
+    create_refresh_token,
     rotate_refresh_token,
     revoke_refresh_token,
     is_refresh_token_valid,
 )
+
 
 from fastapi import APIRouter
 from CUZ.core.firebase import db
