@@ -12,7 +12,8 @@ from CUZ.yearbook.profile.events import router as event_router
 from CUZ.Notification.notification import router as notification_router
 from CUZ.Notification.notification import notify_upcoming_events
 
-from USERS.user_routes import router as user_router, get_current_user
+from CUZ.USERS.user_routes import router as user_router, get_current_user
+
 
 
 
