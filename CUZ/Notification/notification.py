@@ -5,7 +5,9 @@ from datetime import datetime
 from CUZ.core.firebase import db
 from firebase_admin import messaging
 from google.cloud import firestore
-from core.security import get_admin_or_landlord, get_student_or_admin
+# ✅ Correct
+from CUZ.core.security import get_admin_or_landlord, get_student_or_admin
+
 
 router = APIRouter(prefix="/notification", tags=["notification"])
 
