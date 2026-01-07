@@ -13,7 +13,8 @@ from CUZ.core.security import get_student_or_admin, get_student_union_or_higher
 
 # ✅ Event models (adjust depending on your folder structure)
 # If models are in CUZ/Event/models.py:
-from CUZ.Event.models import Event, EventResponse
+from CUZ.event.models import Event, EventResponse
+
 # Or if they’re in CUZ/yearbook/Event/models.py:
 # from CUZ.yearbook.Event.models import Event, EventResponse
 
