@@ -4,11 +4,12 @@ from typing import Optional
 from datetime import datetime
 import requests
 
-from core.firebase import db
+from CUZ.core.firebase import db
 from firebase_admin import messaging
-from .ssecurity import get_premium_student_or_admin   # ✅ corrected import
-from core.config import CLUSTERS
-from routers.region_router import recalculate_origin   # ✅ regional anchor logic
+from CUZ.Proxylocation.ssecurity import get_premium_student_or_admin
+from CUZ.core.config import CLUSTERS
+from CUZ.routers.region_router import recalculate_origin
+
 
 router = APIRouter(prefix="/proxily", tags=["proxily"])
 
