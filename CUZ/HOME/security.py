@@ -5,7 +5,7 @@ All token creation, validation, and role helpers are centralized in core/securit
 Do NOT redefine SECRET_KEY or duplicate get_current_user here.
 """
 
-from core.security import (
+from CUZ.core.security import (
     create_access_token,
     get_current_user,
     get_admin_credentials,
