@@ -8,7 +8,7 @@ from pydantic import (
     ConfigDict,
 )
 from typing import Optional, List
-from utils.sanitize import SanitizedModel
+from CUZ.utils.sanitize import SanitizedModel
 from core.security import is_safe_url
 from datetime import datetime
 import random
