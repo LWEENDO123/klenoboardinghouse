@@ -2,7 +2,7 @@
 import secrets
 import hashlib
 from datetime import datetime, timedelta, timezone
-from core.firebase import db
+from CUZ.core.firebase import db
 from fastapi import Header, HTTPException, status
 
 
