@@ -1,13 +1,14 @@
 #HOME/user_routes.py
-from fastapi import APIRouter, HTTPException, Depends, Query,Request
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from typing import Optional
-from USERS.firebase import db
-from HOME.models import BoardingHouseHomepage, BoardingHouseSummary
-from HOME.security import get_current_user
-from core.config import CLUSTERS
-from utils.token_utils import generate_location_token, decode_location_token
-from HOME.security import get_current_user, get_premium_student
-from USERS.security import get_admin_or_landlord  # landlord/admin auth
+
+from CUZ.USERS.firebase import db
+from CUZ.HOME.models import BoardingHouseHomepage, BoardingHouseSummary
+from CUZ.HOME.security import get_current_user, get_premium_student
+from CUZ.core.config import CLUSTERS
+from CUZ.utils.token_utils import generate_location_token, decode_location_token
+from CUZ.USERS.security import get_admin_or_landlord
+ # landlord/admin auth
 
 
 router = APIRouter(prefix="/home", tags=["HOME"])
