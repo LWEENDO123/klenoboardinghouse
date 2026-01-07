@@ -1,4 +1,4 @@
-# CUZ/ADMIN/core/api_keys.py
+# CUZ/core/api_keys.py
 import secrets
 import hashlib
 from datetime import datetime, timedelta, timezone
