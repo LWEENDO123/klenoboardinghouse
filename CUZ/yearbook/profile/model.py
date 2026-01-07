@@ -1,4 +1,4 @@
-#Yearbook/profile/model.py
+# file: CUZ/yearbook/profile/model.py
 from pydantic import BaseModel, Field, constr, EmailStr
 from typing import List, Optional, Literal
 from datetime import datetime
@@ -28,6 +28,7 @@ class FinalSemesterEntry(BaseModel):
     caption: Optional[str] = None
     photo_url: str
 
+
 # ---------------------------
 # Homepage Feed Card
 # ---------------------------
@@ -37,8 +38,7 @@ class HomepageCard(BaseModel):
     programme: str
     photo_url: str   # latest event photo OR final semester photo
     likes_count: int = 0   # number of hearts
-    # optional: track who liked (user_ids) if you want to prevent double-liking
-    liked_by: Optional[List[str]] = None
+    liked_by: Optional[List[str]] = None   # optional: track who liked
 
 
 # ---------------------------
@@ -61,18 +61,20 @@ class StudentDetailView(BaseModel):
     final_semester: Optional[FinalSemesterEntry] = None
 
 
-  
+# ---------------------------
+# Event Schema
+# ---------------------------
 class Event(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
-    date: constr(pattern=r"^\d{4}-\d{2}-\d{2}$")
-    time: constr(pattern=r"^\d{2}:\d{2}$")
+    date: constr(pattern=r"^\d{4}-\d{2}-\d{2}$")   # YYYY-MM-DD
+    time: constr(pattern=r"^\d{2}:\d{2}$")         # HH:MM
     image_url: Optional[str] = None
     video_url: Optional[str] = None
     GPS_coordinates: Optional[List[float]] = Field(None, min_items=2, max_items=2)
     yango_coordinates: Optional[List[float]] = Field(None, min_items=2, max_items=2)
     created_by: str
     
-    category: Literal["event", "yearbook"] = "event"   # ✅ NEW FIELD
+    category: Literal["event", "yearbook"] = "event"
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
     model_config = {"extra": "forbid"}
@@ -87,15 +89,16 @@ class EventResponse(BaseModel):
     video_url: Optional[str] = None
     GPS_coordinates: Optional[List[float]] = None
     yango_coordinates: Optional[List[float]] = None
-    
 
 
-
+# ---------------------------
+# User Profile Schema
+# ---------------------------
 class UserProfile(BaseModel):
-    first_name: constr(min_length=2, max_length=15, regex=r"^[A-Za-z ]+$")
-    last_name: constr(min_length=2, max_length=15, regex=r"^[A-Za-z ]+$")
-    full_name: str  # ✅ new field
+    first_name: constr(min_length=2, max_length=15, pattern=r"^[A-Za-z ]+$")
+    last_name: constr(min_length=2, max_length=15, pattern=r"^[A-Za-z ]+$")
+    full_name: str
     email: EmailStr
-    phone_number: constr(min_length=7, max_length=15, regex=r"^[0-9]+$")
+    phone_number: constr(min_length=7, max_length=15, pattern=r"^[0-9]+$")
     university: constr(min_length=2, max_length=50)
     premium: bool = False
