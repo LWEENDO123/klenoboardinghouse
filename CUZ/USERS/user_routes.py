@@ -6,6 +6,7 @@ from fastapi import (
 # USERS/user_routes.py
 from CUZ.HOME.add_boardinghouse import CLUSTERS, ACCESS_TOKEN_EXPIRE_MINUTES
 
+from CUZ.HOME.add_boardinghouse import CLUSTERS
 
 from jose import jwt, JWTError
 from core.security import SECRET_KEY, ALGORITHM
@@ -17,7 +18,7 @@ from core.tokens import (
 )
 
 from fastapi import APIRouter
-from core.firebase import db
+from CUZ.core.firebase import db
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
 from pydantic import EmailStr
@@ -47,7 +48,7 @@ from .firebase import (
     get_landlord_by_email,
     get_union_member_by_email,   # ✅ new import
 )
-from core.firebase import db
+
 import logging
 import logging
 logger = logging.getLogger("app.users")  # custom logger name for clarity
