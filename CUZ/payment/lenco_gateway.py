@@ -13,7 +13,7 @@ Notes:
 - Idempotency header is provided for init calls.
 - Provider auto-detection is implemented via prefix map; falls back to 'airtel'.
 """
-from core.firebase import db
+from CUZ.core.firebase import db
 import json
 import uuid
 import logging
