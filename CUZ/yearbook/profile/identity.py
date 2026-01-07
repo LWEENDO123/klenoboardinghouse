@@ -1,6 +1,6 @@
-#Yearbook/profile/identity.py
+# file: CUZ/yearbook/profile/identity.py
 from fastapi import HTTPException
-from core.firebase import db
+from CUZ.core.firebase import db   # ✅ fixed import path
 
 async def assert_student_exists(university: str, student_id: str) -> dict:
     ref = db.collection("USERS").document(university).collection("students").document(student_id)
