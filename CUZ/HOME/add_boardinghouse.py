@@ -1,6 +1,6 @@
 # HOME/add_boardinghouse.py
 from fastapi import APIRouter, Depends, HTTPException, Body
-from HOME.models import BoardingHouse
+from CUZ.HOME.models import BoardingHouse
 from core.firebase import db
 from core.config import CLUSTERS
 from datetime import datetime
