@@ -2,7 +2,8 @@ from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query, 
 from typing import List, Optional
 from datetime import datetime
 import random
-from routers.region_router import recalculate_origin
+from CUZ.routers.region_router import recalculate_origin
+
 
 from core.firebase import db
 from firebase_admin import messaging
