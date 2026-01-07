@@ -1,7 +1,7 @@
 # file: CUZ/Yearbook/profile/event_utils.py
 from fastapi import HTTPException
 from datetime import datetime
-from core.firebase import db
+from CUZ.core.firebase import db
 
 def assert_event_portal_open(university: str, event_id: str) -> None:
     event_doc = db.collection("EVENT").document(university).collection("events").document(event_id).get()
