@@ -105,9 +105,11 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return response
 
 # Always available (no auth required)
+# Always available (no auth required)
 app.include_router(debug_router)
-app.include_router(user_router)              # 👈 leave login/signup open
-app.include_router(webhook_router)           # 👈 Lenco webhook must be open
+app.include_router(user_router)        # login/signup open
+app.include_router(webhook_router)     # webhook open
+app.include_router(messages_router, dependencies=[auth_dependency])  # defined above
 
 # Protected routers (require API key)
 app.include_router(user_home_router, dependencies=[auth_dependency])
@@ -119,8 +121,8 @@ app.include_router(notification_router, dependencies=[auth_dependency])
 app.include_router(boardinghouse_router, dependencies=[auth_dependency])
 app.include_router(store_router, dependencies=[auth_dependency])
 app.include_router(proxily_router, dependencies=[auth_dependency])
-app.include_router(lenco_router, dependencies=[auth_dependency])  # manual tests
-app.include_router(messages_router, dependencies=[auth_dependency])
+app.include_router(lenco_router, dependencies=[auth_dependency])
+
 
 
 
