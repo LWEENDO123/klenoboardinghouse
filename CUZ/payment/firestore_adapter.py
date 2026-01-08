@@ -3,23 +3,29 @@
 from google.cloud import firestore
 from google.oauth2 import service_account
 from datetime import datetime
-import os
+import os, json
 
 # ------------------------------
 # Firestore client initialization with explicit credentials
 # ------------------------------
-SERVICE_ACCOUNT_FILE = os.getenv(
-    "SERVICE_ACCOUNT_FILE",
-    r"C:/Users/lweendo/project/baodinghouse/CUZ/USERS/serviceAccountKey.json"
-)
+
+# Load service account JSON from Railway environment variable
+SERVICE_ACCOUNT_JSON = os.getenv("serviceAccountKey")
 PROJECT_ID = os.getenv("GCP_PROJECT_ID", "boardinghouse-af901")
 
-if not os.path.exists(SERVICE_ACCOUNT_FILE):
-    raise FileNotFoundError(f"Service account key not found at: {SERVICE_ACCOUNT_FILE}")
+if not SERVICE_ACCOUNT_JSON:
+    raise FileNotFoundError("Service account key not found in environment variable: serviceAccountKey")
 
-credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
+# Parse JSON string into dict
+service_account_info = json.loads(SERVICE_ACCOUNT_JSON)
+
+# Build credentials from dict
+credentials = service_account.Credentials.from_service_account_info(service_account_info)
+
+# Initialize Firestore client
 db = firestore.Client(credentials=credentials, project=PROJECT_ID)
 print("🔥 firestore_adapter using project:", db.project)
+
 
 # ------------------------------
 # Helpers
