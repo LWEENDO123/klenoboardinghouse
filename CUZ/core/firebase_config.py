@@ -1,5 +1,5 @@
-# CUZ/ADMIN/core/firebase_config.py
-
+# CUZ/core/firebase_config.py
+'''
 import os
 import firebase_admin
 from firebase_admin import credentials, firestore as fb_firestore, storage
@@ -57,3 +57,6 @@ print("🔥 firebase_config GCP Firestore client project:", gcp_db.project)
 # Exports
 # ------------------------------
 __all__ = ["firebase_db", "bucket", "gcp_db"]
+
+
+'''
