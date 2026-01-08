@@ -1,6 +1,5 @@
 from google.cloud import firestore
 from google.oauth2 import service_account
-from datetime import datetime
 import os, json
 
 # ------------------------------
@@ -9,12 +8,12 @@ import os, json
 
 # Load service account JSON from Railway environment variable
 SERVICE_ACCOUNT_JSON = os.getenv("serviceAccountKey")
-PROJECT_ID = os.getenv("GCP_PROJECT_ID", "boardinghouse-af901")
 
 if not SERVICE_ACCOUNT_JSON:
     raise FileNotFoundError("Environment variable 'serviceAccountKey' is missing or empty")
 
 try:
+    # Parse JSON string into dict
     service_account_info = json.loads(SERVICE_ACCOUNT_JSON)
 except json.JSONDecodeError as e:
     raise ValueError(f"Invalid JSON in 'serviceAccountKey': {str(e)}")
@@ -22,9 +21,10 @@ except json.JSONDecodeError as e:
 # Build credentials from dict
 credentials = service_account.Credentials.from_service_account_info(service_account_info)
 
-# Initialize Firestore client
-db = firestore.Client(credentials=credentials, project=PROJECT_ID)
+# Initialize Firestore client with fixed project ID
+db = firestore.Client(credentials=credentials, project="boardinghouse-af901")
 print("🔥 firestore_adapter using project:", db.project)
+
 
 
 
