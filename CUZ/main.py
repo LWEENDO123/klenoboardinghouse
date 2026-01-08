@@ -4,6 +4,8 @@
 from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import asyncio
+
 
 # Routers
 from CUZ.yearbook.profile.events import router as event_router
@@ -27,7 +29,35 @@ from CUZ.payment.payment_orchestrator import (
 )
 
 # Firebase + security
+
+# ------------------------------
+# Firebase credentials bootstrap (Railway)
+# ------------------------------
+import os
+import json
+import logging
+
+logger = logging.getLogger("firebase.bootstrap")
+
+CREDS_JSON_ENV = "GOOGLE_APPLICATION_CREDENTIALS_JSON"
+CREDS_PATH = "/app/firebase.json"
+
+if CREDS_JSON_ENV in os.environ and not os.path.exists(CREDS_PATH):
+    try:
+        creds = json.loads(os.environ[CREDS_JSON_ENV])
+
+        with open(CREDS_PATH, "w") as f:
+            json.dump(creds, f)
+
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = CREDS_PATH
+        logger.info("🔥 Firebase credentials written to %s", CREDS_PATH)
+
+    except Exception as e:
+        logger.exception("❌ Failed to write Firebase credentials: %s", e)
+        raise
+
 from CUZ.core.firebase import db
+
 import CUZ.core.security
 
 from CUZ.core.api_keys import generate_api_key, verify_api_key, rotate_api_key
@@ -332,8 +362,7 @@ async def lenco_webhook(request: Request):
         # return 500 but do not crash the app
         raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")
     
-# Messages router
-messages_router = APIRouter(prefix="/messages", tags=["messages"])
+
 
 @messages_router.get("/{university}/{student_id}")
 async def get_student_messages(
