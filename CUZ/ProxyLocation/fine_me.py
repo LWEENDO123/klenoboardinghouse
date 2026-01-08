@@ -18,7 +18,8 @@ from CUZ.routers.region_router import recalculate_origin
 
 # 🔗 Regional anchor recalculation
 # Ensure routers is a proper package (routers/__init__.py present) and main.py registers it.
-from routers.region_router import recalculate_origin
+from CUZ.routers.region_router import recalculate_origin
+
 
 router = APIRouter(prefix="/fine_me", tags=["ProxyLocation"])
 
