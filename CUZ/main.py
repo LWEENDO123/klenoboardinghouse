@@ -31,6 +31,9 @@ from CUZ.core.firebase import db
 import CUZ.core.security
 
 from CUZ.core.api_keys import generate_api_key, verify_api_key, rotate_api_key
+from CUZ.core.api_keys import ensure_initial_admin_api_key
+
+
 
 
 # Rate limiting
@@ -101,10 +104,12 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     response.headers["Retry-After"] = str(exc.reset_in)
     return response
 
-
-# Router includes (preserve your original structure)
+# Always available (no auth required)
 app.include_router(debug_router)
-app.include_router(user_router, dependencies=[auth_dependency])
+app.include_router(user_router)              # 👈 leave login/signup open
+app.include_router(webhook_router)           # 👈 Lenco webhook must be open
+
+# Protected routers (require API key)
 app.include_router(user_home_router, dependencies=[auth_dependency])
 app.include_router(pinned_router, dependencies=[auth_dependency])
 app.include_router(pinned_user_routes.router, dependencies=[auth_dependency])
@@ -114,12 +119,9 @@ app.include_router(notification_router, dependencies=[auth_dependency])
 app.include_router(boardinghouse_router, dependencies=[auth_dependency])
 app.include_router(store_router, dependencies=[auth_dependency])
 app.include_router(proxily_router, dependencies=[auth_dependency])
+app.include_router(lenco_router, dependencies=[auth_dependency])  # manual tests
+app.include_router(messages_router, dependencies=[auth_dependency])
 
-# include lenco router for manual tests (or remove if you prefer)
-app.include_router(lenco_router, dependencies=[auth_dependency])
-
-# webhook router included without auth (Lenco will POST to this)
-app.include_router(webhook_router)
 
 
 
@@ -405,7 +407,3 @@ async def mark_message_read(
 # Include messages router (protected)
 app.include_router(messages_router, dependencies=[auth_dependency])
 
-app = FastAPI() # Example route 
-@app.get("/health") 
-def health_check(): 
-    return {"status": "ok"}
