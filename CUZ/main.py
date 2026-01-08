@@ -110,6 +110,8 @@ app.include_router(debug_router)
 app.include_router(user_router)        # login/signup open
 app.include_router(webhook_router)     # webhook open
 app.include_router(messages_router, dependencies=[auth_dependency])  # defined above
+# Include messages router (protected)
+app.include_router(messages_router, dependencies=[auth_dependency])
 
 # Protected routers (require API key)
 app.include_router(user_home_router, dependencies=[auth_dependency])
@@ -406,6 +408,5 @@ async def mark_message_read(
         print(f"❌ mark_message_read error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Include messages router (protected)
-app.include_router(messages_router, dependencies=[auth_dependency])
+
 
