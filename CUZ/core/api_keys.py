@@ -1,6 +1,8 @@
-# CUZ/core/api_keys.py
+# file: CUZ/core/api_keys.py
+
 import secrets
 import hashlib
+import asyncio
 from datetime import datetime, timedelta, timezone
 from CUZ.core.firebase import db
 from fastapi import Header, HTTPException, status
@@ -64,7 +66,6 @@ def rotate_api_key(old_key: str, ttl_days: int = 90) -> str:
     old_hash = hashlib.sha256(old_key.encode()).hexdigest()
     now = datetime.now(timezone.utc)
 
-    # Find the old key
     docs = db.collection("api_keys") \
              .where("key_hash", "==", old_hash) \
              .where("active", "==", True) \
@@ -86,17 +87,19 @@ def rotate_api_key(old_key: str, ttl_days: int = 90) -> str:
     )
 
 
-def ensure_initial_admin_api_key() -> str:
+async def ensure_initial_admin_api_key() -> str:
     """
     Ensure at least one admin API key exists.
     If none found, generate a new one and return the raw key.
+    Async wrapper so it can be awaited in FastAPI startup.
     """
-    docs = db.collection("api_keys").where("role", "==", "admin").stream()
-    for doc in docs:
-        data = doc.to_dict()
-        if data and data.get("active", True):
-            # Already have an active admin key
-            return None
+    def _check_admin_keys():
+        docs = db.collection("api_keys").where("role", "==", "admin").stream()
+        for doc in docs:
+            data = doc.to_dict()
+            if data and data.get("active", True):
+                return None
+        return generate_api_key("admin", ttl_days=90)
 
-    # No active admin key found → generate one
-    return generate_api_key("admin", ttl_days=90)
+    # Run the blocking Firestore query in a thread
+    return await asyncio.to_thread(_check_admin_keys)
