@@ -50,13 +50,36 @@ from dateutil.relativedelta import relativedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pydantic import BaseModel, constr
 
-
 # App initialization
 app = FastAPI(title="Baodinghouse API")
 
-# routers
+# Routers
 debug_router = APIRouter(prefix="/debug", tags=["debug"])
 webhook_router = APIRouter(prefix="/webhook", tags=["webhook"])
+
+# Messages router must be defined BEFORE inclusion
+messages_router = APIRouter(prefix="/messages", tags=["messages"])
+
+@messages_router.get("/{university}/{student_id}")
+async def get_student_messages(
+    university: str,
+    student_id: str,
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=50),
+    current_user: dict = Depends(get_current_user),
+):
+    # … your implementation …
+    return {"data": [], "total": 0}
+
+@messages_router.put("/{university}/{student_id}/{message_id}/read")
+async def mark_message_read(
+    university: str,
+    student_id: str,
+    message_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    # … your implementation …
+    return {"ok": True, "message": "Message marked as read"}
 
 # Logging setup
 logging.basicConfig(
@@ -90,7 +113,6 @@ auth_dependency = Depends(verify_api_key)
 limiter = Limiter(key_func=get_remote_address, default_limits=["1000/hour"])
 app.state.limiter = limiter
 
-
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     response = JSONResponse(
@@ -105,15 +127,12 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return response
 
 # Always available (no auth required)
-# Always available (no auth required)
 app.include_router(debug_router)
 app.include_router(user_router)        # login/signup open
 app.include_router(webhook_router)     # webhook open
-app.include_router(messages_router, dependencies=[auth_dependency])  # defined above
-# Include messages router (protected)
-app.include_router(messages_router, dependencies=[auth_dependency])
 
 # Protected routers (require API key)
+app.include_router(messages_router, dependencies=[auth_dependency])
 app.include_router(user_home_router, dependencies=[auth_dependency])
 app.include_router(pinned_router, dependencies=[auth_dependency])
 app.include_router(pinned_user_routes.router, dependencies=[auth_dependency])
@@ -124,7 +143,6 @@ app.include_router(boardinghouse_router, dependencies=[auth_dependency])
 app.include_router(store_router, dependencies=[auth_dependency])
 app.include_router(proxily_router, dependencies=[auth_dependency])
 app.include_router(lenco_router, dependencies=[auth_dependency])
-
 
 
 
