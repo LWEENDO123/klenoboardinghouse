@@ -33,6 +33,13 @@ try:
     # Decode base64 back into JSON
     decoded_json = base64.b64decode(FIREBASE_SERVICE_ACCOUNT_BASE64).decode("utf-8")
     firebase_cred_dict = json.loads(decoded_json)
+
+    # 🔎 Extra logging for debugging
+    logger.info("Decoded Firebase service account keys: %s", list(firebase_cred_dict.keys()))
+    logger.info("Service account email: %s", firebase_cred_dict.get("client_email"))
+    logger.info("Project ID from JSON: %s", firebase_cred_dict.get("project_id"))
+    logger.info("Private key starts with: %s...", firebase_cred_dict.get("private_key", "")[:30])
+
     firebase_cred = credentials.Certificate(firebase_cred_dict)
 
     if not firebase_admin._apps:  # Prevent re-init
