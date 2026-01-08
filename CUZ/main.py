@@ -1,17 +1,25 @@
-
 # file: CUZ/main.py
 
 from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import asyncio
+import os
+import json
+import logging
+import hmac
+import hashlib
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from pydantic import BaseModel
 
-
-# Routers
+# ------------------------------
+# Routers and auth
+# ------------------------------
 from CUZ.yearbook.profile.events import router as event_router
 from CUZ.Notification.notification import router as notification_router, notify_upcoming_events
-from CUZ.USERS.user_routes import router as user_router, get_current_user
-from CUZ.USERS.Appkey import verify_api_key
+from CUZ.USERS.user_routes import router as user_router
 from CUZ.Available.checkboarding import router as available_router
 from CUZ.PINNED.pinned import router as pinned_router
 from CUZ.PINNED import user_routes as pinned_user_routes
@@ -19,6 +27,7 @@ from CUZ.HOME.add_boardinghouse import router as boardinghouse_router
 from CUZ.HOME.user_routes import router as user_home_router
 from CUZ.Store.store import router as store_router
 from CUZ.ProxyLocation.fine_me import router as proxily_router
+from CUZ.core.security import get_current_user
 
 # Payment modules
 from CUZ.payment.firestore_adapter import get_student_record, save_student_record
@@ -28,57 +37,29 @@ from CUZ.payment.payment_orchestrator import (
     process_payout,
 )
 
-# Firebase + security
-
-# ------------------------------
-# Firebase credentials bootstrap (Railway)
-# ------------------------------
-import os
-import json
-import logging
-
+# Firebase bootstrap (Railway)
 logger = logging.getLogger("firebase.bootstrap")
-
 CREDS_JSON_ENV = "GOOGLE_APPLICATION_CREDENTIALS_JSON"
 CREDS_PATH = "/app/firebase.json"
 
 if CREDS_JSON_ENV in os.environ and not os.path.exists(CREDS_PATH):
     try:
         creds = json.loads(os.environ[CREDS_JSON_ENV])
-
         with open(CREDS_PATH, "w") as f:
             json.dump(creds, f)
-
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = CREDS_PATH
         logger.info("🔥 Firebase credentials written to %s", CREDS_PATH)
-
     except Exception as e:
         logger.exception("❌ Failed to write Firebase credentials: %s", e)
         raise
 
 from CUZ.core.firebase import db
-
 import CUZ.core.security
-
-from CUZ.core.api_keys import generate_api_key, verify_api_key, rotate_api_key
-from CUZ.core.api_keys import ensure_initial_admin_api_key
-
-
-
 
 # Rate limiting
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-
-# Standard libs
-import logging
-import hmac
-import hashlib
-from datetime import datetime
-from dateutil.relativedelta import relativedelta
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from pydantic import BaseModel, constr
 
 # App initialization
 app = FastAPI(title="Baodinghouse API")
@@ -98,8 +79,53 @@ async def get_student_messages(
     limit: int = Query(10, ge=1, le=50),
     current_user: dict = Depends(get_current_user),
 ):
-    # … your implementation …
-    return {"data": [], "total": 0}
+    # Ownership check
+    if current_user.get("user_id") != student_id or current_user.get("university") != university:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    try:
+        coll_ref = (
+            db.collection("MESSAGES")
+            .document(university)
+            .collection("students")
+            .document(student_id)
+            .collection("messages")
+        )
+
+        docs = list(coll_ref.stream())
+        messages = []
+        for doc in docs:
+            data = doc.to_dict() or {}
+            messages.append(
+                {
+                    "id": doc.id,
+                    "title": data.get("title"),
+                    "body": data.get("body"),
+                    "timestamp": data.get("timestamp"),
+                    "read": data.get("read", False),
+                    "type": data.get("type", "system"),
+                }
+            )
+
+        # Sort by timestamp descending
+        messages.sort(key=lambda m: m.get("timestamp", "") or "", reverse=True)
+
+        # Pagination logic
+        start = (page - 1) * limit
+        end = min(start + limit, len(messages))
+        paginated = messages[start:end]
+
+        return {
+            "data": paginated,
+            "total": len(messages),
+            "total_pages": (len(messages) + limit - 1) // limit,
+            "current_page": page,
+        }
+
+    except Exception as e:
+        logger.exception("❌ get_student_messages error: %s", e)
+        raise HTTPException(status_code=500, detail=f"Error fetching messages: {str(e)}")
+
 
 @messages_router.put("/{university}/{student_id}/{message_id}/read")
 async def mark_message_read(
@@ -108,8 +134,30 @@ async def mark_message_read(
     message_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    # … your implementation …
-    return {"ok": True, "message": "Message marked as read"}
+    if current_user.get("user_id") != student_id or current_user.get("university") != university:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    try:
+        doc_ref = (
+            db.collection("MESSAGES")
+            .document(university)
+            .collection("students")
+            .document(student_id)
+            .collection("messages")
+            .document(message_id)
+        )
+
+        doc = doc_ref.get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Message not found")
+
+        doc_ref.set({"read": True}, merge=True)
+        return {"ok": True, "message": "Message marked as read"}
+
+    except Exception as e:
+        logger.exception("❌ mark_message_read error: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # Logging setup
 logging.basicConfig(
@@ -136,9 +184,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API key dependency
-auth_dependency = Depends(verify_api_key)
-
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address, default_limits=["1000/hour"])
 app.state.limiter = limiter
@@ -161,29 +206,24 @@ app.include_router(debug_router)
 app.include_router(user_router)        # login/signup open
 app.include_router(webhook_router)     # webhook open
 
-# Protected routers (require API key)
-app.include_router(messages_router, dependencies=[auth_dependency])
-app.include_router(user_home_router, dependencies=[auth_dependency])
-app.include_router(pinned_router, dependencies=[auth_dependency])
-app.include_router(pinned_user_routes.router, dependencies=[auth_dependency])
-app.include_router(available_router, dependencies=[auth_dependency])
-app.include_router(event_router, dependencies=[auth_dependency])
-app.include_router(notification_router, dependencies=[auth_dependency])
-app.include_router(boardinghouse_router, dependencies=[auth_dependency])
-app.include_router(store_router, dependencies=[auth_dependency])
-app.include_router(proxily_router, dependencies=[auth_dependency])
-app.include_router(lenco_router, dependencies=[auth_dependency])
-
-
-
-
+# Protected routers (require JWT Bearer token)
+app.include_router(messages_router, dependencies=[Depends(get_current_user)])
+app.include_router(user_home_router, dependencies=[Depends(get_current_user)])
+app.include_router(pinned_router, dependencies=[Depends(get_current_user)])
+app.include_router(pinned_user_routes.router, dependencies=[Depends(get_current_user)])
+app.include_router(available_router, dependencies=[Depends(get_current_user)])
+app.include_router(event_router, dependencies=[Depends(get_current_user)])
+app.include_router(notification_router, dependencies=[Depends(get_current_user)])
+app.include_router(boardinghouse_router, dependencies=[Depends(get_current_user)])
+app.include_router(store_router, dependencies=[Depends(get_current_user)])
+app.include_router(proxily_router, dependencies=[Depends(get_current_user)])
+app.include_router(lenco_router, dependencies=[Depends(get_current_user)])
 
 # Ping endpoint
 @app.get("/ping")
 @limiter.limit("5/minute")
 async def ping(request: Request):
     return {"message": "pong"}
-
 
 # Premium expiry check endpoint (manual trigger)
 @app.post("/payments/check-expiry")
@@ -195,39 +235,32 @@ async def run_premium_expiry_check():
         logger.error(f"[EXPIRY CHECK] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Expiry check failed: {str(e)}")
 
-
-# Startup scheduled job + bootstrap
+# Startup scheduled job
 @app.on_event("startup")
 async def startup_event():
-    key = await ensure_initial_admin_api_key()  # ✅ THIS IS THE FIX
-    if key:
-        logger.info(f"[BOOTSTRAP] Created initial admin API key: {key}")
-
-
+    """
+    Scheduler starts on app startup. If you want to seed CONFIG/jwt or other
+    Firestore documents, do it here (synchronously or via asyncio.to_thread).
+    """
     scheduler = AsyncIOScheduler()
 
     # Existing premium expiry check
     scheduler.add_job(check_and_update_premium_expiry, "interval", days=1)
 
-    # New: run event notifications daily at 07:00 for each university
+    # Run event notifications daily at 07:00 for each university
     for uni in ["CUZ", "UNZA", "CBU"]:
-     scheduler.add_job(
-        lambda u=uni: asyncio.create_task(notify_upcoming_events(u)),
-        "cron",
-        hour=7,
-    )
-
+        scheduler.add_job(
+            lambda u=uni: asyncio.create_task(notify_upcoming_events(u)),
+            "cron",
+            hour=7,
+        )
 
     scheduler.start()
     logger.info("[SCHEDULER] Premium expiry + event notifications scheduled daily.")
 
-
-
 # ------------------------------
 # Payment Test Model
 # ------------------------------
-from pydantic import BaseModel
-
 class PaymentRequest(BaseModel):
     student_id: str
     university: str
@@ -262,13 +295,10 @@ async def test_payment(req: PaymentRequest):
         logger.error(f"[PAYMENT TEST] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Payment failed: {str(e)}")
 
-
 # ------------------------------
 # Webhook (Lenco -> your app)
 # ------------------------------
-# NOTE: signature verification implemented. You asked to keep hard-coded info:
 WEBHOOK_SIGNING_SECRET = "99137b878b12cd6e1a874f528ba48afc71b99077a4a763880ec536855fccec48"
-# Lenco might send signature in different headers depending on config; check dashboard.
 POSSIBLE_SIGNATURE_HEADERS = [
     "x-lenco-signature",
     "lenco-signature",
@@ -277,35 +307,20 @@ POSSIBLE_SIGNATURE_HEADERS = [
     "signature",
 ]
 
-
 def _verify_webhook_signature(secret: str, body: bytes, header_value: str) -> bool:
-    """
-    Compute HMAC-SHA256(hex) of body using secret and compare to header_value.
-    Supports header_value being raw hex or prefixed like 'sha256=...'.
-    """
     if not header_value:
         return False
-
-    # if header contains prefix like "sha256=..."
     if "=" in header_value and header_value.split("=", 1)[0].lower() in {"sha256", "sha1"}:
         _, header_value = header_value.split("=", 1)
-
     try:
         computed = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
-        # compare in constant time
         return hmac.compare_digest(computed, header_value)
     except Exception as e:
         logger.exception("[WEBHOOK] signature verification error: %s", e)
         return False
 
-
 @webhook_router.post("/lenco")
 async def lenco_webhook(request: Request):
-    """
-    Receives Lenco webhook POST requests.
-    Verifies signature header (HMAC-SHA256) against the raw request body.
-    If signature is valid, processes the payload (activates premium on SUCCESSFUL).
-    """
     try:
         raw_body = await request.body()
         header_sig = None
@@ -323,13 +338,11 @@ async def lenco_webhook(request: Request):
             logger.warning("[WEBHOOK] Signature mismatch.")
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
 
-        # parse JSON safely
         try:
             data = await request.json()
         except Exception:
-            # fallback: try loading from raw bytes
-            import json
-            data = json.loads(raw_body.decode("utf-8"))
+            import json as _json
+            data = _json.loads(raw_body.decode("utf-8"))
 
         transaction_id = data.get("id")
         status_val = data.get("status")
@@ -356,15 +369,20 @@ async def lenco_webhook(request: Request):
         return {"ok": True, "transaction_id": transaction_id, "status": status_val}
 
     except HTTPException:
-        # re-raise fastapi HTTP errors so they return correct status
         raise
     except Exception as e:
         logger.exception("[WEBHOOK] Unexpected error processing webhook: %s", e)
-        # return 500 but do not crash the app
         raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")
-    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("[WEBHOOK] Unexpected error processing webhook: %s", e)
+        raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")
 
 
+# ------------------------------
+# Messages endpoints (already protected via router dependency)
+# ------------------------------
 @messages_router.get("/{university}/{student_id}")
 async def get_student_messages(
     university: str,
@@ -379,15 +397,14 @@ async def get_student_messages(
         raise HTTPException(status_code=403, detail="Not authorized")
 
     try:
-        # ✅ FIXED PATH: Collection -> Doc -> Collection -> Doc -> Collection
         coll_ref = (
             db.collection("MESSAGES")
             .document(university)
-            .collection("students")  # Intermediate Collection
-            .document(student_id)    # Student Document
-            .collection("messages")  # Messages sub-collection
+            .collection("students")
+            .document(student_id)
+            .collection("messages")
         )
-        
+
         docs = list(coll_ref.stream())
         messages = []
         for doc in docs:
@@ -419,7 +436,7 @@ async def get_student_messages(
         }
 
     except Exception as e:
-        print(f"❌ get_student_messages error: {e}")
+        logger.exception("❌ get_student_messages error: %s", e)
         raise HTTPException(status_code=500, detail=f"Error fetching messages: {str(e)}")
 
 
@@ -435,7 +452,6 @@ async def mark_message_read(
         raise HTTPException(status_code=403, detail="Not authorized")
 
     try:
-        # ✅ FIXED PATH: Must match the GET path exactly
         doc_ref = (
             db.collection("MESSAGES")
             .document(university)
@@ -444,17 +460,68 @@ async def mark_message_read(
             .collection("messages")
             .document(message_id)
         )
-        
+
         doc = doc_ref.get()
         if not doc.exists:
             raise HTTPException(status_code=404, detail="Message not found")
 
         doc_ref.set({"read": True}, merge=True)
         return {"ok": True, "message": "Message marked as read"}
-        
+
     except Exception as e:
-        print(f"❌ mark_message_read error: {e}")
+        logger.exception("❌ mark_message_read error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ------------------------------
+# Payment Test Model + endpoint
+# ------------------------------
+class PaymentRequest(BaseModel):
+    student_id: str
+    university: str
+    msisdn: str
+
+@app.post("/payments/test")
+async def test_payment(req: PaymentRequest):
+    try:
+        logger.debug(f"[PAYMENT TEST] student_id={req.student_id} university={req.university} msisdn={req.msisdn}")
+
+        result = await process_payout(
+            student_id=req.student_id,
+            university=req.university,
+            msisdn=req.msisdn,
+        )
+
+        return {
+            "status": True if isinstance(result, dict) else False,
+            "message": "Payment test processed",
+            "data": [result] if isinstance(result, dict) else [],
+            "meta": {
+                "total": 1 if isinstance(result, dict) else 0,
+                "pageCount": 1,
+                "perPage": 1,
+                "currentPage": 1
+            }
+        }
+
+    except Exception as e:
+        logger.exception("[PAYMENT TEST] Error: %s", e)
+        raise HTTPException(status_code=500, detail=f"Payment failed: {str(e)}")
+
+
+# ------------------------------
+# Optional: health endpoint for Firebase
+# ------------------------------
+@app.get("/firebase/health")
+async def firebase_health():
+    try:
+        # quick checks that db and storage are accessible
+        project = getattr(db, "project", None)
+        return {"ok": True, "firestore_project": project}
+    except Exception as e:
+        logger.exception("Firebase health check failed: %s", e)
+        raise HTTPException(status_code=500, detail="Firebase health check failed")
+
+
+# End of file
 
