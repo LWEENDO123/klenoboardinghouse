@@ -13,21 +13,22 @@ from dateutil.relativedelta import relativedelta
 from typing import Optional, Dict, Any
 
 # Firestore adapter (atomic wrappers + helpers)
-from payment.firestore_adapter import (
+from CUZ.payment.firestore_adapter import (
     get_student_record,
     save_student_record,
     log_gateway_error,
-    log_payout_atomic,       # ✅ atomic payout logging (payout + referral + notification)
-    append_payment_idempotent,  # kept for non-atomic append if needed
+    log_payout_atomic,
+    append_payment_idempotent,
 )
 
-# Lenco gateway low-level functions
-from payment.lenco_gateway import (
+from CUZ.payment.lenco_gateway import (
     initialize_transfer,
     get_transfer_status,
-    initialize_collection,     # if you still need direct collections
+    initialize_collection,
     get_collection_status,
 )
+
+
 
 logger = logging.getLogger("payment.orchestrator")
 if not logger.handlers:
