@@ -84,3 +84,19 @@ def rotate_api_key(old_key: str, ttl_days: int = 90) -> str:
         status_code=status.HTTP_404_NOT_FOUND,
         detail="Old API key not found or already inactive"
     )
+
+
+def ensure_initial_admin_api_key() -> str:
+    """
+    Ensure at least one admin API key exists.
+    If none found, generate a new one and return the raw key.
+    """
+    docs = db.collection("api_keys").where("role", "==", "admin").stream()
+    for doc in docs:
+        data = doc.to_dict()
+        if data and data.get("active", True):
+            # Already have an active admin key
+            return None
+
+    # No active admin key found → generate one
+    return generate_api_key("admin", ttl_days=90)
