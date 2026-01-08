@@ -1,5 +1,3 @@
-# payment/firestore_adapter.py
-
 from google.cloud import firestore
 from google.oauth2 import service_account
 from datetime import datetime
@@ -14,10 +12,12 @@ SERVICE_ACCOUNT_JSON = os.getenv("serviceAccountKey")
 PROJECT_ID = os.getenv("GCP_PROJECT_ID", "boardinghouse-af901")
 
 if not SERVICE_ACCOUNT_JSON:
-    raise FileNotFoundError("Service account key not found in environment variable: serviceAccountKey")
+    raise FileNotFoundError("Environment variable 'serviceAccountKey' is missing or empty")
 
-# Parse JSON string into dict
-service_account_info = json.loads(SERVICE_ACCOUNT_JSON)
+try:
+    service_account_info = json.loads(SERVICE_ACCOUNT_JSON)
+except json.JSONDecodeError as e:
+    raise ValueError(f"Invalid JSON in 'serviceAccountKey': {str(e)}")
 
 # Build credentials from dict
 credentials = service_account.Credentials.from_service_account_info(service_account_info)
@@ -25,6 +25,7 @@ credentials = service_account.Credentials.from_service_account_info(service_acco
 # Initialize Firestore client
 db = firestore.Client(credentials=credentials, project=PROJECT_ID)
 print("🔥 firestore_adapter using project:", db.project)
+
 
 
 # ------------------------------
