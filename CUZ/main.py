@@ -199,9 +199,10 @@ async def run_premium_expiry_check():
 # Startup scheduled job + bootstrap
 @app.on_event("startup")
 async def startup_event():
-    key = ensure_initial_admin_api_key()
+    key = await ensure_initial_admin_api_key()  # ✅ THIS IS THE FIX
     if key:
         logger.info(f"[BOOTSTRAP] Created initial admin API key: {key}")
+
 
     scheduler = AsyncIOScheduler()
 
