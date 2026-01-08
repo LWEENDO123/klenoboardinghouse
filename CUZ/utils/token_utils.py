@@ -1,7 +1,7 @@
 #utilis/token_utilis
 import jwt
 from datetime import datetime, timedelta
-from core.config import SECRET_KEY
+from CUZ.core.config import SECRET_KEY
 
 def generate_location_token(data: dict, expires_in_minutes: int = 10):
     payload = data.copy()
