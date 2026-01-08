@@ -30,7 +30,8 @@ from CUZ.payment.payment_orchestrator import (
 from CUZ.core.firebase import db
 import CUZ.core.security
 
-from CUZ.ADMIN.api_keys_bootstrap import ensure_initial_admin_api_key
+from CUZ.core.api_keys import generate_api_key, verify_api_key, rotate_api_key
+
 
 # Rate limiting
 from slowapi import Limiter
