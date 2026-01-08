@@ -17,12 +17,19 @@ logger.setLevel(logging.INFO)
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "boardinghouse-af901")
 FIREBASE_BUCKET = os.getenv("FIREBASE_BUCKET", f"{FIREBASE_PROJECT_ID}.appspot.com")
 
+# Path to service account JSON (must be mounted in container)
+GOOGLE_CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
 # ------------------------------
-# Firebase Admin initialization (Application Default Credentials)
+# Firebase Admin initialization (force JSON file)
 # ------------------------------
 try:
-    # Use ADC — GOOGLE_APPLICATION_CREDENTIALS must point to a valid JSON file
-    cred = credentials.ApplicationDefault()
+    if not GOOGLE_CREDENTIALS_PATH or not os.path.exists(GOOGLE_CREDENTIALS_PATH):
+        raise FileNotFoundError(
+            f"Service account JSON not found at: {GOOGLE_CREDENTIALS_PATH or '<unset>'}"
+        )
+
+    cred = credentials.Certificate(GOOGLE_CREDENTIALS_PATH)
 
     if not firebase_admin._apps:  # Prevent re-init
         app = firebase_admin.initialize_app(cred, {
