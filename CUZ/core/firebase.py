@@ -17,18 +17,26 @@ logger.setLevel(logging.INFO)
 # ------------------------------
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "boardinghouse-af901")
 FIREBASE_BUCKET = os.getenv("FIREBASE_BUCKET", f"{FIREBASE_PROJECT_ID}.appspot.com")
-FIREBASE_CREDENTIAL_JSON = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+FIREBASE_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 
 # ------------------------------
-# Firebase Admin initialization (force JSON from env)
+# Firebase Admin initialization (supports JSON string or file path)
 # ------------------------------
 try:
-    if not FIREBASE_CREDENTIAL_JSON:
+    if not FIREBASE_CREDENTIALS:
         raise ValueError("GOOGLE_APPLICATION_CREDENTIALS env var is not set")
 
-    # Parse the raw JSON string directly
-    firebase_cred_dict = json.loads(FIREBASE_CREDENTIAL_JSON)
-    cred = credentials.Certificate(firebase_cred_dict)
+    # Case 1: JSON string (Railway/GitHub secrets style)
+    try:
+        firebase_cred_dict = json.loads(FIREBASE_CREDENTIALS)
+        cred = credentials.Certificate(firebase_cred_dict)
+        logger.info("Using raw JSON credentials from env")
+    except json.JSONDecodeError:
+        # Case 2: File path (Google SDK style)
+        if not os.path.isfile(FIREBASE_CREDENTIALS):
+            raise FileNotFoundError(f"Credential file not found: {FIREBASE_CREDENTIALS}")
+        cred = credentials.Certificate(FIREBASE_CREDENTIALS)
+        logger.info("Using credential file path: %s", FIREBASE_CREDENTIALS)
 
     if not firebase_admin._apps:
         app = firebase_admin.initialize_app(cred, {
