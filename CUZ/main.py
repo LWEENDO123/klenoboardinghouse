@@ -10,7 +10,7 @@ from CUZ.yearbook.profile.events import router as event_router
 from CUZ.Notification.notification import router as notification_router, notify_upcoming_events
 from CUZ.USERS.user_routes import router as user_router, get_current_user
 from CUZ.USERS.Appkey import verify_api_key
-from CUZ.Available.check_boarding import router as available_router
+from CUZ.Available.checkboarding import router as available_router
 from CUZ.PINNED.pinned import router as pinned_router
 from CUZ.PINNED import user_routes as pinned_user_routes
 from CUZ.HOME.add_boardinghouse import router as boardinghouse_router
