@@ -252,16 +252,13 @@ def log_union_simple_notification(university: str, union_id: str, transaction_id
     )
 
 
-from google.cloud import firestore
-from datetime import datetime
-
-db = firestore.Client()
 
 def log_payout_atomic(university: str, union_id: str, referral_code: str,
                       student_id: str, payout_id: str, payout_status: str,
-                      payout_data: dict):
+                      payout_data: dict) -> None:
     """
     Atomically log a payout, increment referral usage, and add a notification.
+    Uses the credentialed Firestore client initialized at the top of the file.
     """
     def txn_fn(transaction):
         union_ref = db.collection("USERS").document(university).collection("studentunion").document(union_id)
@@ -272,7 +269,8 @@ def log_payout_atomic(university: str, union_id: str, referral_code: str,
         transaction.update(union_ref, {
             "payouts": firestore.ArrayUnion([{
                 **payout_data,
-                "loggedAt": datetime.utcnow().isoformat()
+                "loggedAt": datetime.utcnow().isoformat(),
+                "loggedAtServer": _server_ts(),
             }])
         })
 
@@ -281,11 +279,12 @@ def log_payout_atomic(university: str, union_id: str, referral_code: str,
             "usedBy": student_id,
             "usedAt": datetime.utcnow().isoformat(),
             "payoutId": payout_id,
-            "payoutStatus": payout_status
+            "payoutStatus": payout_status,
+            "usedAtServer": _server_ts(),
         }
         transaction.update(referral_ref, {
             "currentUses": firestore.Increment(1),
-            "usages": firestore.ArrayUnion([usage])
+            "usages": firestore.ArrayUnion([usage]),
         })
 
         # Notification
@@ -293,6 +292,7 @@ def log_payout_atomic(university: str, union_id: str, referral_code: str,
             "transactionId": payout_id,
             "message": f"Referral payout update - Status: {payout_status}",
             "timestamp": datetime.utcnow().isoformat(),
+            "timestampServer": _server_ts(),
             "read": False,
         }
         transaction.set(notif_ref, notif)
@@ -301,9 +301,10 @@ def log_payout_atomic(university: str, union_id: str, referral_code: str,
 
 
 def log_collection_atomic(student_id: str, university: str, transaction_id: str,
-                          amount: float, status: str, operator: str, reference: str):
+                          amount: float, status: str, operator: str, reference: str) -> None:
     """
     Atomically log a mobile money collection into student record.
+    Uses the credentialed Firestore client initialized at the top of the file.
     """
     def txn_fn(transaction):
         student_ref = db.collection("USERS").document(university).collection("students").document(student_id)
@@ -313,10 +314,11 @@ def log_collection_atomic(student_id: str, university: str, transaction_id: str,
             "status": status,
             "operator": operator,
             "reference": reference,
-            "loggedAt": datetime.utcnow().isoformat()
+            "loggedAt": datetime.utcnow().isoformat(),
+            "loggedAtServer": _server_ts(),
         }
         transaction.update(student_ref, {
-            "payments": firestore.ArrayUnion([payment])
+            "payments": firestore.ArrayUnion([payment]),
         })
 
     db.transaction()(txn_fn)
