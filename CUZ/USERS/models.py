@@ -6,6 +6,7 @@ from pydantic import (
     constr,
     field_validator,
     ConfigDict,
+    ValidationInfo,
 )
 from typing import Optional, List
 from CUZ.utils.sanitize import SanitizedModel
@@ -54,11 +55,11 @@ class StudentSignup(StrictSanitizedModel):
         return v
 
     @field_validator("last_name")
-    def validate_name_length(cls, v: str, values) -> str:
-        first = values.get("first_name", "")
-        if len(first + v) > 25:
+    def validate_name_length(cls, v: str, info: ValidationInfo) -> str:
+        first = info.data.get("first_name", "")
+        if len((first or "").strip() + (v or "").strip()) > 25:
             raise ValueError("Combined name length must not exceed 25 characters")
-        if first.strip().lower() == v.strip().lower():
+        if (first or "").strip().lower() == (v or "").strip().lower():
             raise ValueError("First and last name cannot be identical")
         return v
 
@@ -87,11 +88,11 @@ class LandlordSignup(StrictSanitizedModel):
         return v
 
     @field_validator("last_name")
-    def validate_name_length(cls, v: str, values) -> str:
-        first = values.get("first_name", "")
-        if len(first + v) > 25:
+    def validate_name_length(cls, v: str, info: ValidationInfo) -> str:
+        first = info.data.get("first_name", "")
+        if len((first or "").strip() + (v or "").strip()) > 25:
             raise ValueError("Combined name length must not exceed 25 characters")
-        if first.strip().lower() == v.strip().lower():
+        if (first or "").strip().lower() == (v or "").strip().lower():
             raise ValueError("First and last name cannot be identical")
         return v
 
@@ -255,10 +256,10 @@ class StudentUnionSignup(BaseModel):
         return v
 
     @field_validator("last_name")
-    def validate_name_length(cls, v: str, values) -> str:
-        first = values.get("first_name", "")
-        if len(first + v) > 25:
+    def validate_name_length(cls, v: str, info: ValidationInfo) -> str:
+        first = info.data.get("first_name", "")
+        if len((first or "").strip() + (v or "").strip()) > 25:
             raise ValueError("Combined name length must not exceed 25 characters")
-        if first.strip().lower() == v.strip().lower():
+        if (first or "").strip().lower() == (v or "").strip().lower():
             raise ValueError("First and last name cannot be identical")
         return v
