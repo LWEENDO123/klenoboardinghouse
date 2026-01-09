@@ -523,5 +523,54 @@ async def firebase_health():
         raise HTTPException(status_code=500, detail="Firebase health check failed")
 
 
-# End of file
+# ------------------------------
+# Device Registration Endpoint
+# ------------------------------
+from pydantic import BaseModel
+
+class DeviceRegisterRequest(BaseModel):
+    university: str
+    user_id: str          # can be student_id or landlord_id
+    role: str             # "student", "landlord", or "admin"
+    device_token: str     # FCM token or unique device ID
+    platform: str = "android"  # optional: android/ios/web
+
+@app.post("/device/register")
+async def register_device(
+    req: DeviceRegisterRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Register a device for notifications / tracking.
+    - Students: must match their own student_id + university
+    - Landlords/Admins: must match their own user_id + role
+    Stores under DEVICES/{user_id} with metadata.
+    """
+    # ✅ Ownership / role check
+    if current_user.get("role") == "student":
+        if current_user.get("user_id") != req.user_id or current_user.get("university") != req.university:
+            raise HTTPException(status_code=403, detail="Not authorized as student")
+    elif current_user.get("role") in ["landlord", "admin"]:
+        if current_user.get("user_id") != req.user_id or current_user.get("role") != req.role:
+            raise HTTPException(status_code=403, detail="Not authorized as landlord/admin")
+    else:
+        raise HTTPException(status_code=403, detail="Unsupported role")
+
+    try:
+        doc_ref = db.collection("DEVICES").document(req.user_id)
+        doc_ref.set({
+            "university": req.university,
+            "user_id": req.user_id,
+            "role": req.role,
+            "device_token": req.device_token,
+            "platform": req.platform,
+            "registered_at": datetime.utcnow().isoformat(),
+        }, merge=True)
+
+        return {"ok": True, "message": f"Device registered for {req.role}"}
+    except Exception as e:
+        logger.exception("❌ Device registration error: %s", e)
+        raise HTTPException(status_code=500, detail=f"Error registering device: {str(e)}")
+
+
 
