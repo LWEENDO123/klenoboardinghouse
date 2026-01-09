@@ -624,4 +624,11 @@ async def logout(refresh_token: str = Form(...)):
         raise HTTPException(status_code=500, detail=f"Error during logout: {str(e)}")
 
    
+@router.get("/ping")
+async def ping():
+    """
+    Simple health check endpoint.
+    Frontend calls this every ~25 minutes to keep connection alive.
+    """
+    return {"message": "pong", "status": "ok"}
 
