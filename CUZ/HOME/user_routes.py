@@ -255,7 +255,8 @@ def resolve_region_offset(region: Optional[str], dest_lat: float, dest_lon: floa
 
 
 # --------------------------------------------------
-# 🚕 Yango Directions Endpoint
+# 🚕 Yango Directions Endpoint (Android-safe)
+# --------------------------------------------------
 @router.get("/yango/{id}")
 async def get_yango_links(
     id: str,
@@ -271,6 +272,9 @@ async def get_yango_links(
 ):
     validate_student_identity(university, student_id)
 
+    # --------------------------------------------------
+    # Fetch boarding house
+    # --------------------------------------------------
     doc = db.collection("BOARDINGHOUSES").document(id).get()
     if not doc.exists:
         doc = (
@@ -280,10 +284,12 @@ async def get_yango_links(
             .document(id)
             .get()
         )
+
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Boarding house not found")
 
     data = doc.to_dict()
+
     coords = data.get("yango_coordinates") or data.get("GPS_coordinates")
     if not coords or len(coords) != 2:
         raise HTTPException(status_code=400, detail="Yango coordinates missing")
@@ -291,29 +297,61 @@ async def get_yango_links(
     dest_lat, dest_lon = coords
     dest_lat, dest_lon = resolve_region_offset(region, dest_lat, dest_lon)
 
-    # Secure link support
+    # --------------------------------------------------
+    # Secure redirect support (optional)
+    # --------------------------------------------------
     if secure:
-        token = create_location_token(current_lat, current_lon, dest_lat, dest_lon)
-        return {"secure_link": f"https://yourdomain.com/yango/redirect/{token}", "service": "yango"}
+        token = create_location_token(
+            current_lat, current_lon, dest_lat, dest_lon
+        )
+        return {
+            "secure_link": f"https://yourdomain.com/yango/redirect/{token}",
+            "service": "yango",
+        }
 
-    browser_link = (
-        f"https://yango.com/en_int/order/?gfrom={current_lat},{current_lon}"
-        f"&gto={dest_lat},{dest_lon}&tariff={tariff}&lang={lang}"
+    # --------------------------------------------------
+    # 1️⃣ Android-safe browser dispatcher (NO intent redirects)
+    # --------------------------------------------------
+    browser_safe_link = (
+        "https://go.yango.yandex.com/route?"
+        f"start-lat={current_lat}&start-lon={current_lon}"
+        f"&end-lat={dest_lat}&end-lon={dest_lon}"
+        f"&tariff={tariff}&lang={lang}"
     )
+
+    # --------------------------------------------------
+    # 2️⃣ Legacy browser link (Yango docs – NOT Android-safe)
+    # --------------------------------------------------
+    legacy_browser_link = (
+        f"https://yango.com/en_int/order/"
+        f"?gfrom={current_lat},{current_lon}"
+        f"&gto={dest_lat},{dest_lon}"
+        f"&tariff={tariff}&lang={lang}"
+    )
+
+    # --------------------------------------------------
+    # 3️⃣ Deep link (ONLY if app installed)
+    # --------------------------------------------------
     deep_link = (
-        f"yango://route?"
+        "yango://route?"
         f"start-lat={current_lat}&start-lon={current_lon}"
         f"&end-lat={dest_lat}&end-lon={dest_lon}"
     )
 
+    # --------------------------------------------------
+    # Response
+    # --------------------------------------------------
     return {
-        "browser_link": browser_link,
-        "deep_link": deep_link,
+        "browser_link": browser_safe_link,        # ✅ use this on Android ≥ 6
+        "legacy_browser_link": legacy_browser_link,  # ⚠️ desktop / Android 5 only
+        "deep_link": deep_link,                   # ⚠️ app-installed only
         "pickup": [current_lat, current_lon],
         "dropoff": [dest_lat, dest_lon],
         "region": region or "direct",
+        "android_safe": True,
         "service": "yango",
     }
+
 
 
 # --------------------------------------------------
