@@ -1,5 +1,5 @@
 # file: CUZ/HOME/add_boardinghouse.py
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Form, File, UploadFile
 from CUZ.HOME.models import BoardingHouse              # ✅ models inside CUZ/HOME
 from CUZ.core.firebase import db                       # ✅ firebase inside CUZ/core
 from CUZ.core.config import CLUSTERS                   # ✅ config inside CUZ/core
