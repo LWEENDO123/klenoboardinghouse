@@ -11,7 +11,8 @@ from fastapi.security import HTTPBearer, OAuth2PasswordBearer
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from CUZ.core.firebase import db
-from CUZ.core.tokens import get_secret_key  # ✅ ensure consistent secret source
+from CUZ.ADMIN.core.config import get_secret_key, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
+
 
 
 # ---------------------------
