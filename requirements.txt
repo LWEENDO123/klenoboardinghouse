@@ -31,8 +31,10 @@ filetype==1.2.0
 # Image processing
 Pillow==11.0.0   # ✅ added for PIL.Image
 
+# Railway S3 storage
+boto3==1.34.0    # ✅ added for Railway bucket integration
+
 # Optional / recommended
 httpx==0.27.2
 python-dotenv==1.0.1
 python-dateutil
-
