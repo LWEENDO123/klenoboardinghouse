@@ -269,6 +269,8 @@ async def update_availability(
 
 
 
+
+
 @router.delete("/admin/delete/{id}", response_model=dict)
 async def delete_boardinghouse(
     id: str = Path(..., description="Boarding house ID to delete"),
@@ -299,6 +301,10 @@ async def delete_boardinghouse(
             "deleted_from": [f"BOARDINGHOUSES", f"HOME/{university}/BOARDHOUSE"]
         }
 
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting boarding house: {str(e)}")
 
 
 @router.post("/upload")
@@ -307,7 +313,7 @@ async def upload_media(
     student_id: str = Form(...),
     file: UploadFile = File(...),
     public: bool = Form(False),
-    current_user: dict = Depends(get_current_admin)
+    current_user: dict = Depends(get_current_admin)  # optional if you want auth
 ):
     """
     Accepts an image/video file, compresses if image, uploads to Railway S3,
@@ -316,16 +322,28 @@ async def upload_media(
     try:
         contents = await file.read()
 
+        # Decide content type
         content_type = file.content_type or "application/octet-stream"
+
+        # If it's an image, compress to 1280x720
         if content_type.startswith("image/"):
             contents = compress_to_720(contents)
 
+        # Generate unique key
         unique_name = f"{university}/{student_id}/{uuid.uuid4()}_{file.filename}".replace(" ", "_")
+
+        # Upload to S3
         url = upload_file_bytes(unique_name, contents, content_type, public=public)
 
-        return {"url": url, "filename": file.filename, "uploaded_at": datetime.utcnow().isoformat()}
+        return {
+            "url": url,
+            "filename": file.filename,
+            "uploaded_at": datetime.utcnow().isoformat()
+        }
+
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
 
