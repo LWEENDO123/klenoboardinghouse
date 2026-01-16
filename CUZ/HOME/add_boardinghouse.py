@@ -8,6 +8,8 @@ from firebase_admin import messaging
 from CUZ.USERS.security import get_current_admin, get_admin_or_landlord  # ✅ security inside CUZ/USERS
 import random
 import string
+from CUZ.yearbook.profile.compress import compress_to_720
+from CUZ.yearbook.profile.storage import upload_file_bytes import uuid
 from fastapi import Path
 
 router = APIRouter(prefix="/boardinghouse", tags=["boardinghouse"])
@@ -295,6 +297,40 @@ async def delete_boardinghouse(
             "message": f"🗑️ Boarding house {id} deleted successfully",
             "deleted_from": [f"BOARDINGHOUSES", f"HOME/{university}/BOARDHOUSE"]
         }
+
+
+@router.post("/upload")
+async def upload_media(
+    university: str = Form(...),
+    student_id: str = Form(...),
+    file: UploadFile = File(...),
+    public: bool = Form(False),
+    current_user: dict = Depends(get_current_admin)  # optional if you want auth
+):
+    """
+    Accepts an image/video file, compresses if image, uploads to Railway S3,
+    and returns a URL.
+    """
+    try:
+        contents = await file.read()
+
+        # Decide content type
+        content_type = file.content_type or "application/octet-stream"
+
+        # If it's an image, compress to 1280x720
+        if content_type.startswith("image/"):
+            contents = compress_to_720(contents)
+
+        # Generate unique key
+        unique_name = f"{university}/{student_id}/{uuid.uuid4()}_{file.filename}".replace(" ", "_")
+
+        # Upload to S3
+        url = upload_file_bytes(unique_name, contents, content_type, public=public)
+
+        return {"url": url, "filename": file.filename, "uploaded_at": datetime.utcnow().isoformat()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
 
     except HTTPException:
         raise
