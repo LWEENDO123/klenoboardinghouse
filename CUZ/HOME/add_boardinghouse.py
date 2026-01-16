@@ -300,13 +300,14 @@ async def delete_boardinghouse(
         }
 
 
+
 @router.post("/upload")
 async def upload_media(
     university: str = Form(...),
     student_id: str = Form(...),
     file: UploadFile = File(...),
     public: bool = Form(False),
-    current_user: dict = Depends(get_current_admin)  # optional if you want auth
+    current_user: dict = Depends(get_current_admin)
 ):
     """
     Accepts an image/video file, compresses if image, uploads to Railway S3,
@@ -315,25 +316,16 @@ async def upload_media(
     try:
         contents = await file.read()
 
-        # Decide content type
         content_type = file.content_type or "application/octet-stream"
-
-        # If it's an image, compress to 1280x720
         if content_type.startswith("image/"):
             contents = compress_to_720(contents)
 
-        # Generate unique key
         unique_name = f"{university}/{student_id}/{uuid.uuid4()}_{file.filename}".replace(" ", "_")
-
-        # Upload to S3
         url = upload_file_bytes(unique_name, contents, content_type, public=public)
 
         return {"url": url, "filename": file.filename, "uploaded_at": datetime.utcnow().isoformat()}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
-
-
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error deleting boarding house: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
