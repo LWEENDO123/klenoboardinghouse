@@ -320,9 +320,11 @@ async def upload_media(
     current_user: dict = Depends(get_current_admin),
 ):
     """
-    Uploads an image/video to Railway Object Storage and returns a SIGNED URL.
-    - Images are compressed to max 1280x720.
-    - URL is time-limited (default: 7 days).
+    Uploads an image/video to Railway Object Storage and returns
+    a long-lived SIGNED URL.
+
+    - Images are compressed to max 1280x720
+    - URL is effectively permanent (multi-year signed URL)
     """
     try:
         contents = await file.read()
@@ -332,32 +334,41 @@ async def upload_media(
 
         content_type = file.content_type or "application/octet-stream"
 
-        # Compress images
+        # ✅ Compress images only
         if content_type.startswith("image/"):
             contents = compress_to_720(contents)
 
+        # ✅ Resolve owner
         sid = student_id or current_user.get("user_id") or "admin"
 
-        key = f"{university}/{sid}/{uuid.uuid4()}_{file.filename}".replace(" ", "_")
+        # ✅ Stable object key
+        key = (
+            f"{university}/{sid}/"
+            f"{uuid.uuid4()}_{file.filename}"
+        ).replace(" ", "_")
 
+        # ✅ Upload (storage handles signed URL lifetime)
         url = upload_file_bytes(
             key=key,
             file_bytes=contents,
             content_type=content_type,
-            expires_in=60 * 60 * 24 * 7,  # 7 days
         )
 
         return {
             "url": url,
-            "expires_in_hours": 168,
             "filename": file.filename,
+            "content_type": content_type,
             "uploaded_at": datetime.utcnow().isoformat(),
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Upload failed: {str(e)}"
+        )
+)}")
 
 
 
