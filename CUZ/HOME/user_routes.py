@@ -34,6 +34,7 @@ def validate_student_identity(university: str, student_id: str):
 
 
 
+
 @router.get("", response_model=dict)
 @router.get("/", response_model=dict)
 async def get_home(
