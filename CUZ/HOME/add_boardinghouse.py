@@ -330,16 +330,18 @@ async def upload_media(
 
         content_type = file.content_type or "application/octet-stream"
 
+        # Compress if it's an image
         if content_type.startswith("image/"):
             contents = compress_to_720(contents)
 
         sid = student_id or current_user.get("user_id") or "admin"
 
-        key = (
-            f"{university}/{sid}/"
-            f"{uuid.uuid4()}_{file.filename}"
-        ).replace(" ", "_")
+        # Generate a clean, unique key
+        unique_id = uuid.uuid4()
+        clean_filename = file.filename.replace(" ", "_")
+        key = f"{university}/{sid}/{unique_id}_{clean_filename}"
 
+        # The storage function now returns a permanent public URL
         url = upload_file_bytes(
             key=key,
             file_bytes=contents,
@@ -354,6 +356,7 @@ async def upload_media(
         }
 
     except Exception as e:
+        logger.error(f"Upload error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
