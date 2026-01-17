@@ -3,6 +3,13 @@ import logging
 import uuid
 import boto3
 from botocore.client import Config
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from datetime import datetime
+from CUZ.USERS.security import get_current_admin
+from CUZ.yearbook.profile.compress import compress_to_720
+
+router = APIRouter(prefix="/media", tags=["media"])
+
 
 logger = logging.getLogger("core.storage")
 logger.setLevel(logging.INFO)
