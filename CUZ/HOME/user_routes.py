@@ -152,6 +152,7 @@ async def get_home(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching homepage data: {str(e)}")
+
   
 
 
