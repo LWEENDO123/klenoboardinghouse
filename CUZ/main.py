@@ -14,6 +14,8 @@ from dateutil.relativedelta import relativedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pydantic import BaseModel
 from CUZ.yearbook.profile.storage import ensure_bucket_public
+from fastapi.responses import StreamingResponse
+from CUZ.yearbook.profile.storage import s3_client, RAILWAY_BUCKET
 
 
 
@@ -584,6 +586,26 @@ async def register_device(
     except Exception as e:
         logger.exception("❌ Device registration error: %s", e)
         raise HTTPException(status_code=500, detail=f"Error registering device: {str(e)}")
+
+
+
+# This endpoint catches any URL starting with /media/ and fetches it from S3
+@app.get("/media/{file_path:path}")
+async def get_media_proxy(file_path: str):
+    try:
+        # 1. Fetch the object from the private Railway bucket
+        obj = s3_client.get_object(Bucket=RAILWAY_BUCKET, Key=file_path)
+        
+        # 2. Stream it back to the user with the correct content type
+        return StreamingResponse(
+            obj['Body'], 
+            media_type=obj.get('ContentType', 'image/jpeg')
+        )
+    except s3_client.exceptions.NoSuchKey:
+        raise HTTPException(status_code=404, detail="File not found in storage")
+    except Exception as e:
+        logger.error(f"Proxy error: {e}")
+        raise HTTPException(status_code=500, detail="Could not retrieve file")
 
 
 
