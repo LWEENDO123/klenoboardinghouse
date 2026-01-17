@@ -315,43 +315,50 @@ async def delete_boardinghouse(
 @router.post("/upload")
 async def upload_media(
     university: str = Form(...),
-    student_id: str = Form(None),   # 👈 still optional
+    student_id: str = Form(None),
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_admin)  # still enforces admin auth
+    current_user: dict = Depends(get_current_admin),
 ):
     """
-    Accepts an image/video file, compresses if image, uploads to Railway S3,
-    and returns a permanent public URL.
+    Uploads an image/video to Railway Object Storage and returns a SIGNED URL.
+    - Images are compressed to max 1280x720.
+    - URL is time-limited (default: 7 days).
     """
     try:
         contents = await file.read()
 
-        # Decide content type
+        if not contents:
+            raise HTTPException(status_code=400, detail="Empty file upload")
+
         content_type = file.content_type or "application/octet-stream"
 
-        # If it's an image, compress to 1280x720
+        # Compress images
         if content_type.startswith("image/"):
             contents = compress_to_720(contents)
 
-        # 👇 If student_id not provided, fallback to admin user_id or 'admin'
         sid = student_id or current_user.get("user_id") or "admin"
 
-        # Generate unique key
-        unique_name = f"{university}/{sid}/{uuid.uuid4()}_{file.filename}".replace(" ", "_")
+        key = f"{university}/{sid}/{uuid.uuid4()}_{file.filename}".replace(" ", "_")
 
-        # Upload to S3 with public=True
-        url = upload_file_bytes(unique_name, contents, content_type, public=True)
+        url = upload_file_bytes(
+            key=key,
+            file_bytes=contents,
+            content_type=content_type,
+            expires_in=60 * 60 * 24 * 7,  # 7 days
+        )
 
         return {
             "url": url,
+            "expires_in_hours": 168,
             "filename": file.filename,
-            "uploaded_at": datetime.utcnow().isoformat()
+            "uploaded_at": datetime.utcnow().isoformat(),
         }
 
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
 
 
 
