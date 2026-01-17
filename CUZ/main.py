@@ -13,6 +13,9 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pydantic import BaseModel
+from CUZ.yearbook.profile.storage import router as media_router
+
+
 
 # ------------------------------
 # Routers and auth
@@ -219,6 +222,7 @@ app.include_router(boardinghouse_router, dependencies=[Depends(get_current_user)
 app.include_router(store_router, dependencies=[Depends(get_current_user)])
 app.include_router(proxily_router, dependencies=[Depends(get_current_user)])
 app.include_router(lenco_router, dependencies=[Depends(get_current_user)])
+app.include_router(media_router)
 
 
 # Ping endpoint
