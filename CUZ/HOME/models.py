@@ -77,7 +77,7 @@ class BoardingHouseSummary(BaseModel):
 class BoardingHouseHomepage(BaseModel):
     id: str
     name_boardinghouse: str
-    price: str
+    #price: str
     image: str
     gender: Literal["male", "female", "mixed", "both"]
     location: Optional[str] = None
