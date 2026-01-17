@@ -1,7 +1,7 @@
 #HOME/user_routes.py
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from typing import Optional
-
+from datetime import datetime
 from CUZ.USERS.firebase import db
 from CUZ.HOME.models import BoardingHouseHomepage, BoardingHouseSummary
 from CUZ.HOME.security import get_current_user, get_premium_student
@@ -31,6 +31,8 @@ def validate_student_identity(university: str, student_id: str):
 # ---------------------------
 # GET /home - Paginated homepage summary (scroll-ready)
 # ---------------------------
+
+
 
 @router.get("", response_model=dict)
 @router.get("/", response_model=dict)
@@ -71,19 +73,24 @@ async def get_home(
             )
 
         houses = []
-        for doc in boardinghouses_ref:
+        for doc in boardinghouses_ref or []:
             data = doc.to_dict()
             data["id"] = doc.id
 
-            # Ensure created_at is a valid datetime
-            if "created_at" not in data or not isinstance(data["created_at"], datetime):
+            # Normalize created_at
+            ca = data.get("created_at")
+            if hasattr(ca, "to_datetime"):  # Firestore Timestamp
+                data["created_at"] = ca.to_datetime()
+            elif isinstance(ca, datetime):
+                data["created_at"] = ca
+            else:
                 data["created_at"] = datetime.utcnow()
 
             houses.append(data)
 
         # Apply filter
         if filter == "new":
-            houses.sort(key=lambda h: h["created_at"], reverse=True)
+            houses.sort(key=lambda h: h.get("created_at", datetime.min), reverse=True)
 
         # Pagination
         total = len(houses)
@@ -152,6 +159,7 @@ async def get_home(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching homepage data: {str(e)}")
+
 
   
 
