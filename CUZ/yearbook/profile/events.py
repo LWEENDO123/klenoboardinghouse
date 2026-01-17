@@ -22,7 +22,7 @@ from CUZ.yearbook.profile.model import Event, EventResponse
 # ✅ Local utilities (relative imports inside yearbook/profile/)
 from .security import validate_image
 from .compress import compress_to_720
-from .storage import upload_compressed_image
+from .compress import upload_to_firebase
 from .identity import assert_student_exists, assert_owns_resource_or_admin
 from .event_utils import assert_event_portal_open, today_event_id
 
