@@ -12,8 +12,8 @@ RAILWAY_ENDPOINT = os.getenv("RAILWAY_ENDPOINT")
 RAILWAY_ACCESS_KEY = os.getenv("RAILWAY_ACCESS_KEY")
 RAILWAY_SECRET_KEY = os.getenv("RAILWAY_SECRET_KEY")
 
-# This is your Railway App URL (e.g., https://your-api-production.up.railway.app)
-# Add this to your Railway Environment Variables!
+# IMPORTANT: Set this to your Railway App URL in your dashboard
+# Example: https://your-app-name.up.railway.app
 BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 
 if not all([RAILWAY_BUCKET, RAILWAY_ENDPOINT, RAILWAY_ACCESS_KEY, RAILWAY_SECRET_KEY]):
@@ -35,12 +35,10 @@ def upload_file_bytes(
     content_type: str = "application/octet-stream",
 ) -> str:
     """
-    Uploads file to private bucket and returns a permanent URL 
-    that routes through our own API proxy.
+    Uploads file to private bucket and returns a permanent proxy URL.
     """
     logger.info(f"📤 Uploading {key} to private bucket")
 
-    # Upload (No ACL needed because the bucket is private)
     s3_client.put_object(
         Bucket=RAILWAY_BUCKET,
         Key=key,
@@ -48,8 +46,7 @@ def upload_file_bytes(
         ContentType=content_type,
     )
 
-    # Return a URL that points to our own FastAPI proxy endpoint
-    # Format: https://your-api.railway.app/media/university/student/file.jpg
+    # The URL now points to your FastAPI server, not the private bucket
     return f"{BASE_URL}/media/{key}"
 
 __all__ = ["upload_file_bytes", "s3_client", "RAILWAY_BUCKET"]
