@@ -13,6 +13,9 @@ from CUZ.yearbook.profile.storage import upload_file_bytes
 import uuid
 from fastapi import Path
 
+from datetime import datetime
+from google.cloud.firestore_v1 import SERVER_TIMESTAMP
+
 router = APIRouter(prefix="/boardinghouse", tags=["boardinghouse"])
 
 
@@ -42,6 +45,7 @@ def generate_boardinghouse_id(landlord_name: str) -> str:
 # ---------------------------
 
 
+
 @router.post("/admin/assign_boardinghouse")
 async def assign_boardinghouse(
     boardinghouse: BoardingHouse,
@@ -56,11 +60,11 @@ async def assign_boardinghouse(
         boardinghouse_data = boardinghouse.dict(exclude_unset=True)
         boardinghouse_data.update({
             "id": bh_id,
-            "created_at": datetime.utcnow(),
+            "created_at": SERVER_TIMESTAMP,  # ✅ Firestore sets a proper timestamp
             "videos": boardinghouse.videos or [],
             "voice_notes": boardinghouse.voice_notes or [],
             "images": boardinghouse.images or [],
-            "space_description": boardinghouse.space_description or "Kleno will update you on the number of space is available. soon!",
+            "space_description": boardinghouse.space_description or "Kleno will update you when number of space is available.",
             "conditions": boardinghouse.conditions or None,
             "public_T": boardinghouse.public_T or None,
             "rating": boardinghouse.rating,
@@ -76,7 +80,7 @@ async def assign_boardinghouse(
             univ_ref = db.collection("HOME").document(univ)
             if not univ_ref.get().exists:
                 univ_ref.set({
-                    "created_at": datetime.utcnow(),
+                    "created_at": SERVER_TIMESTAMP,
                     "status": "active",
                     "description": f"Auto-created HOME/{univ}"
                 })
@@ -96,6 +100,7 @@ async def assign_boardinghouse(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error assigning boarding house: {str(e)}")
+
 
 
 # ---------------------------
