@@ -13,7 +13,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pydantic import BaseModel
-from CUZ.yearbook.profile.storage import ensure_bucket_public
+from CUZ.yearbook.profile.storage import upload_file_bytes, s3_client, RAILWAY_BUCKET
 from fastapi.responses import StreamingResponse
 from CUZ.yearbook.profile.storage import s3_client, RAILWAY_BUCKET
 
