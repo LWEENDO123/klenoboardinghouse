@@ -155,86 +155,61 @@ async def get_boardinghouse_summary(
     student_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    try:
-        validate_student_identity(university, student_id)
+    validate_student_identity(university, student_id)
 
-        ref = db.collection("BOARDINGHOUSES").document(id).get()
-        if not ref.exists:
-            ref = (
-                db.collection("HOME")
-                .document(university)
-                .collection("boardinghouse")
-                .document(id)
-                .get()
-            )
+    ref = db.collection("BOARDINGHOUSES").document(id).get()
+    if not ref.exists:
+        ref = db.collection("HOME").document(university).collection("boardinghouse").document(id).get()
+    if not ref.exists:
+        raise HTTPException(status_code=404, detail="Boarding house not found")
 
-        if not ref.exists:
-            raise HTTPException(status_code=404, detail="Boarding house not found")
+    data = ref.to_dict()
 
-        data = ref.to_dict()
+    return {
+        "name": data.get("name", "Unnamed"),
 
-        return {
-            "name": data.get("name", "Unnamed"),
+        # Room types
+        "image_12": data.get("image_12"),
+        "price_12": data.get("price_12"),
+        "sharedroom_12": data.get("sharedroom_12"),
+        "image_6": data.get("image_6"),
+        "price_6": data.get("price_6"),
+        "sharedroom_6": data.get("sharedroom_6"),
+        "image_5": data.get("image_5"),
+        "price_5": data.get("price_5"),
+        "sharedroom_5": data.get("sharedroom_5"),
+        "image_4": data.get("image_4"),
+        "price_4": data.get("price_4"),
+        "sharedroom_4": data.get("sharedroom_4"),
+        "image_3": data.get("image_3"),
+        "price_3": data.get("price_3"),
+        "sharedroom_3": data.get("sharedroom_3"),
+        "image_2": data.get("image_2"),
+        "price_2": data.get("price_2"),
+        "sharedroom_2": data.get("sharedroom_2"),
+        "image_1": data.get("image_1"),
+        "price_1": data.get("price_1"),
+        "singleroom": data.get("singleroom"),
 
-            # Room types
-            "image_12": data.get("image_12"),
-            "price_12": data.get("price_12"),
-            "sharedroom_12": data.get("sharedroom_12"),
+        # Apartment
+        "image_apartment": data.get("image_apartment"),
+        "price_apartment": data.get("price_apartment"),
+        "apartment": data.get("apartment"),
 
-            "image_6": data.get("image_6"),
-            "price_6": data.get("price_6"),
-            "sharedroom_6": data.get("sharedroom_6"),
+        # Media
+        "gallery_images": data.get("images", []),
+        "videos": data.get("videos", []),
+        "voice_notes": data.get("voice_notes", []),
 
-            "image_5": data.get("image_5"),
-            "price_5": data.get("price_5"),
-            "sharedroom_5": data.get("sharedroom_5"),
+        # Metadata
+        "space_description": data.get("space_description"),
+        "conditions": data.get("conditions"),
+        "amenities": data.get("amenities", []),
+        "location": data.get("location", ""),
+        "GPS_coordinates": data.get("GPS_coordinates"),
+        "yango_coordinates": data.get("yango_coordinates"),
+    }
 
-            "image_4": data.get("image_4"),
-            "price_4": data.get("price_4"),
-            "sharedroom_4": data.get("sharedroom_4"),
-
-            "image_3": data.get("image_3"),
-            "price_3": data.get("price_3"),
-            "sharedroom_3": data.get("sharedroom_3"),
-
-            "image_2": data.get("image_2"),
-            "price_2": data.get("price_2"),
-            "sharedroom_2": data.get("sharedroom_2"),
-
-            "image_1": data.get("image_1"),
-            "price_1": data.get("price_1"),
-            "singleroom": data.get("singleroom"),
-
-            "image_apartment": data.get("image_apartment"),
-            "price_apartment": data.get("price_apartment"),
-            "apartment": data.get("apartment"),
-
-            # Media
-            "gallery_images": [img for img in [
-                data.get("image_1"),
-                data.get("image_2"),
-                data.get("image_3"),
-                data.get("image_4"),
-                data.get("image_5"),
-                data.get("image_6"),
-                data.get("image_apartment"),
-            ] if img],
-            "videos": data.get("videos", []) if isinstance(data.get("videos"), list) else [data.get("videos")] if data.get("videos") else [],
-            "voice_notes": data.get("voice_notes", []) if isinstance(data.get("voice_notes"), list) else [data.get("voice_notes")] if data.get("voice_notes") else [],
-
-            # Metadata
-            "space_description": data.get("space_description", "Kleno will update you when number of spaces is available."),
-            "conditions": data.get("conditions"),
-            "amenities": data.get("amenities", []),
-            "location": data.get("location", ""),
-            "GPS_coordinates": data.get("GPS_coordinates"),
-            "yango_coordinates": data.get("yango_coordinates"),
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching boarding house summary: {str(e)}")
  
 
 
