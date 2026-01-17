@@ -31,10 +31,6 @@ def validate_student_identity(university: str, student_id: str):
 # ---------------------------
 # GET /home - Paginated homepage summary (scroll-ready)
 # ---------------------------
-
-
-
-
 @router.get("", response_model=dict)
 @router.get("/", response_model=dict)
 async def get_home(
@@ -101,19 +97,6 @@ async def get_home(
 
         homepage_data = []
         for data in paginated:
-            prices = [
-                float(data.get("price_12", float("inf"))),
-                float(data.get("price_6", float("inf"))),
-                float(data.get("price_5", float("inf"))),
-                float(data.get("price_4", float("inf"))),
-                float(data.get("price_3", float("inf"))),
-                float(data.get("price_2", float("inf"))),
-                float(data.get("price_1", float("inf"))),
-                float(data.get("price_apartment", float("inf"))),
-            ]
-            lowest_price = min([p for p in prices if p != float("inf")], default=float("inf"))
-            price_str = str(int(lowest_price)) if lowest_price != float("inf") else "N/A"
-
             image = (
                 data.get("image_12")
                 or data.get("image_6")
@@ -138,7 +121,6 @@ async def get_home(
                 BoardingHouseHomepage(
                     id=data["id"],
                     name_boardinghouse=data.get("name", "Unnamed"),
-                    price=price_str,
                     image=image,
                     gender=gender,
                     location=data.get("location", ""),
@@ -160,6 +142,7 @@ async def get_home(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching homepage data: {str(e)}")
+
 
 
   
