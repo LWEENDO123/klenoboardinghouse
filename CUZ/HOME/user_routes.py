@@ -57,22 +57,33 @@ async def get_home(
         else:
             universities = [uni]
 
-        # Query Firestore
+        # Primary query: global BOARDINGHOUSES
         boardinghouses_ref = (
             db.collection("BOARDINGHOUSES")
             .where("universities", "array_contains_any", universities)
             .get()
         )
+
+        # Fallback: scoped HOME/{uni}/BOARDHOUSE
         if not boardinghouses_ref:
             boardinghouses_ref = (
-                db.collection("HOME").document(uni).collection("boardinghouse").get()
+                db.collection("HOME").document(uni).collection("BOARDHOUSE").get()
             )
 
-        houses = [doc.to_dict() | {"id": doc.id} for doc in boardinghouses_ref]
+        houses = []
+        for doc in boardinghouses_ref:
+            data = doc.to_dict()
+            data["id"] = doc.id
+
+            # Ensure created_at is a valid datetime
+            if "created_at" not in data or not isinstance(data["created_at"], datetime):
+                data["created_at"] = datetime.utcnow()
+
+            houses.append(data)
 
         # Apply filter
         if filter == "new":
-            houses.sort(key=lambda h: h.get("created_at"), reverse=True)
+            houses.sort(key=lambda h: h["created_at"], reverse=True)
 
         # Pagination
         total = len(houses)
@@ -141,7 +152,7 @@ async def get_home(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching homepage data: {str(e)}")
-    
+  
 
 
 
