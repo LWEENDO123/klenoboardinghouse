@@ -1,5 +1,5 @@
 import os
-import uuid
+import json
 import logging
 import boto3
 from botocore.client import Config
@@ -26,29 +26,56 @@ s3_client = boto3.client(
     region_name="us-east-1",
 )
 
+def ensure_bucket_public():
+    """
+    Sets a bucket policy to allow public 'read' access to all objects.
+    Run this once or during app initialization.
+    """
+    public_policy = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "PublicReadGetObject",
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "s3:GetObject",
+                "Resource": f"arn:aws:s3:::{RAILWAY_BUCKET}/*"
+            }
+        ]
+    }
+    try:
+        s3_client.put_bucket_policy(
+            Bucket=RAILWAY_BUCKET, 
+            Policy=json.dumps(public_policy)
+        )
+        logger.info(f"✅ Public policy applied to bucket: {RAILWAY_BUCKET}")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not set bucket policy: {e}. Ensure your Railway user has permissions.")
+
 def upload_file_bytes(
     key: str,
     file_bytes: bytes,
     content_type: str = "application/octet-stream",
-    expires_in: int = 60 * 60 * 24 * 365 * 5,  # 5 years (effectively permanent)
 ) -> str:
     """
-    Upload file and return a long-lived signed URL.
+    Upload file and return a PERMANENT public URL.
     """
-
     logger.info(f"📤 Uploading {key}")
+
+    # Ensure the bucket policy is set (optional: you can call this once elsewhere)
+    # ensure_bucket_public() 
 
     s3_client.put_object(
         Bucket=RAILWAY_BUCKET,
         Key=key,
         Body=file_bytes,
         ContentType=content_type,
+        ACL='public-read' # Explicitly set object to public
     )
 
-    return s3_client.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": RAILWAY_BUCKET, "Key": key},
-        ExpiresIn=expires_in,
-    )
+    # Construct the permanent URL manually
+    # Standard format: https://endpoint/bucket/key
+    base_url = RAILWAY_ENDPOINT.rstrip("/")
+    return f"{base_url}/{RAILWAY_BUCKET}/{key}"
 
-__all__ = ["upload_file_bytes"]
+__all__ = ["upload_file_bytes", "ensure_bucket_public"]
