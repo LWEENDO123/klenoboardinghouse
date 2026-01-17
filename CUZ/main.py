@@ -245,9 +245,15 @@ async def run_premium_expiry_check():
 @app.on_event("startup")
 async def startup_event():
     """
-    Scheduler starts on app startup. If you want to seed CONFIG/jwt or other
-    Firestore documents, do it here (synchronously or via asyncio.to_thread).
+    Runs on app startup: Schedules jobs and initializes storage policy.
     """
+    # 1. Initialize Storage Bucket Policy
+    try:
+        ensure_bucket_public()
+    except Exception as e:
+        logger.error(f"[STORAGE] Failed to set public policy: {e}")
+
+    # 2. Existing Scheduler Logic
     scheduler = AsyncIOScheduler()
 
     # Existing premium expiry check
