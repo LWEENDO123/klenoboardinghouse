@@ -29,7 +29,7 @@ s3_client = boto3.client(
 def ensure_bucket_public():
     """
     Sets a bucket policy to allow public 'read' access to all objects.
-    Run this once or during app initialization.
+    This fixes the 'Access Denied' issue for generated links.
     """
     public_policy = {
         "Version": "2012-10-17",
@@ -50,7 +50,7 @@ def ensure_bucket_public():
         )
         logger.info(f"✅ Public policy applied to bucket: {RAILWAY_BUCKET}")
     except Exception as e:
-        logger.warning(f"⚠️ Could not set bucket policy: {e}. Ensure your Railway user has permissions.")
+        logger.warning(f"⚠️ Could not set bucket policy: {e}")
 
 def upload_file_bytes(
     key: str,
@@ -58,24 +58,23 @@ def upload_file_bytes(
     content_type: str = "application/octet-stream",
 ) -> str:
     """
-    Upload file and return a PERMANENT public URL.
+    Uploads file and returns a permanent public URL.
     """
     logger.info(f"📤 Uploading {key}")
 
-    # Ensure the bucket policy is set (optional: you can call this once elsewhere)
-    # ensure_bucket_public() 
-
+    # ACL='public-read' tells the storage that this specific file is public
     s3_client.put_object(
         Bucket=RAILWAY_BUCKET,
         Key=key,
         Body=file_bytes,
         ContentType=content_type,
-        ACL='public-read' # Explicitly set object to public
+        ACL='public-read' 
     )
 
-    # Construct the permanent URL manually
-    # Standard format: https://endpoint/bucket/key
+    # Clean the endpoint to remove trailing slashes
     base_url = RAILWAY_ENDPOINT.rstrip("/")
+    
+    # Return a permanent direct link (No expiration tokens!)
     return f"{base_url}/{RAILWAY_BUCKET}/{key}"
 
 __all__ = ["upload_file_bytes", "ensure_bucket_public"]
