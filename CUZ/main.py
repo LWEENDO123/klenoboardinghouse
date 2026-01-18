@@ -589,19 +589,27 @@ async def register_device(
 @app.get("/media/{file_path:path}")
 async def get_media_proxy(file_path: str):
     try:
-        # 1. Fetch the object from the private Railway bucket
+        # Fetch object from S3
         obj = s3_client.get_object(Bucket=RAILWAY_BUCKET, Key=file_path)
         
-        # 2. Stream it back to the user with the correct content type
+        # Get the actual content type stored during upload
+        # If it's missing, default to image/jpeg
+        content_type = obj.get('ContentType', 'image/jpeg')
+
         return StreamingResponse(
             obj['Body'], 
-            media_type=obj.get('ContentType', 'image/jpeg')
+            media_type=content_type,
+            headers={
+                "Cache-Control": "public, max-age=31536000",
+                # This line is key: 'inline' means show in browser, 'attachment' means download
+                "Content-Disposition": "inline" 
+            }
         )
     except s3_client.exceptions.NoSuchKey:
-        raise HTTPException(status_code=404, detail="File not found in storage")
+        raise HTTPException(status_code=404, detail="File not found")
     except Exception as e:
         logger.error(f"Proxy error: {e}")
-        raise HTTPException(status_code=500, detail="Could not retrieve file")
+        raise HTTPException(status_code=500, detail="Error fetching file")
 
 
 
