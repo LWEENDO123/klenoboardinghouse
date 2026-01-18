@@ -588,28 +588,34 @@ async def register_device(
 # This endpoint catches any URL starting with /media/ and fetches it from S3
 @app.get("/media/{file_path:path}")
 async def get_media_proxy(file_path: str):
+    """
+    Streams the image with correct headers to prevent forced downloads.
+    """
     try:
-        # Fetch object from S3
+        # 1. Fetch from S3
         obj = s3_client.get_object(Bucket=RAILWAY_BUCKET, Key=file_path)
         
-        # Get the actual content type stored during upload
-        # If it's missing, default to image/jpeg
+        # 2. Get the specific content type (e.g., image/jpeg, image/png)
         content_type = obj.get('ContentType', 'image/jpeg')
 
+        # 3. Stream with headers that force 'inline' display
         return StreamingResponse(
             obj['Body'], 
             media_type=content_type,
             headers={
+                # 'inline' tells the browser: "Show this on the screen"
+                "Content-Disposition": f"inline; filename={file_path.split('/')[-1]}",
+                # Cache for 1 year to make the yearbook feel snappy
                 "Cache-Control": "public, max-age=31536000",
-                # This line is key: 'inline' means show in browser, 'attachment' means download
-                "Content-Disposition": "inline" 
+                # Prevents browsers from trying to guess a different MIME type
+                "X-Content-Type-Options": "nosniff"
             }
         )
     except s3_client.exceptions.NoSuchKey:
-        raise HTTPException(status_code=404, detail="File not found")
+        raise HTTPException(status_code=404, detail="Image not found")
     except Exception as e:
-        logger.error(f"Proxy error: {e}")
-        raise HTTPException(status_code=500, detail="Error fetching file")
+        logger.error(f"Proxy streaming error: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching image")
 
 
 
