@@ -248,15 +248,10 @@ async def run_premium_expiry_check():
 @app.on_event("startup")
 async def startup_event():
     """
-    Runs on app startup: Schedules jobs and initializes storage policy.
+    Runs on app startup: Schedules jobs. 
+    (Storage policy initialization removed as we are using the Media Proxy method).
     """
-    # 1. Initialize Storage Bucket Policy
-    try:
-        ensure_bucket_public()
-    except Exception as e:
-        logger.error(f"[STORAGE] Failed to set public policy: {e}")
-
-    # 2. Existing Scheduler Logic
+    # 1. Scheduler Logic
     scheduler = AsyncIOScheduler()
 
     # Existing premium expiry check
@@ -272,6 +267,7 @@ async def startup_event():
 
     scheduler.start()
     logger.info("[SCHEDULER] Premium expiry + event notifications scheduled daily.")
+    logger.info("[STORAGE] Media Proxy is active at /media/{file_path}")
 
 # ------------------------------
 # Payment Test Model
