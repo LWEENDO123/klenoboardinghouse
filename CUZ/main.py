@@ -34,6 +34,13 @@ from CUZ.HOME.user_routes import router as user_home_router
 from CUZ.Store.store import router as store_router
 from CUZ.ProxyLocation.fine_me import router as proxily_router
 from CUZ.core.security import get_current_user
+# Rate limiting
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from CUZ.core.firebase import db
+import CUZ.core.security
+
 
 
 # Payment modules
@@ -60,13 +67,8 @@ if CREDS_JSON_ENV in os.environ and not os.path.exists(CREDS_PATH):
         logger.exception("❌ Failed to write Firebase credentials: %s", e)
         raise
 
-from CUZ.core.firebase import db
-import CUZ.core.security
 
-# Rate limiting
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
+
 
 # App initialization
 app = FastAPI(title="Baodinghouse API")
