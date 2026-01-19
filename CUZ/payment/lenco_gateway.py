@@ -791,4 +791,9 @@ async def get_student_phone(student_id: str, university: str):
 
     logger.info(f"Returning phone_number={normalized_phone} for student_id={student_id}, university={university}")
     return response
+
+@router.get("/debug")
+async def payments_debug():
+    return {"ok": True, "msg": "payments router is active"}
+
   
