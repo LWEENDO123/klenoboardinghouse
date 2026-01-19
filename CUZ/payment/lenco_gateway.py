@@ -13,7 +13,7 @@ Notes:
 - Idempotency header is provided for init calls.
 - Provider auto-detection is implemented via prefix map; falls back to 'airtel'.
 """
-from payment.firestore_adapter import log_collection_atomic
+from CUZ.payment.firestore_adapter import log_collection_atomic
 from datetime import datetime
 from google.cloud import firestore
 from CUZ.core.firebase import db
