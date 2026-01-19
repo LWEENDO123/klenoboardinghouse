@@ -504,19 +504,21 @@ from jose import jwt, JWTError
 
 logger = logging.getLogger("uvicorn.error")
 
+from datetime import timedelta
+
 @router.post("/auth/refresh")
 @limit("10/minute")
 async def refresh_tokens(
     request: Request,
-    response: Response,                # <-- added here
+    response: Response,
     refresh_token: str = Form(...)
 ):
     try:
-        logger.debug(
-            f"Received refresh request from IP={request.client.host}, UA={request.headers.get('user-agent')}"
-        )
-        logger.debug(f"Raw refresh_token={refresh_token[:20]}...")  # log only prefix for safety
+        logger.debug("========== REFRESH TOKEN REQUEST ==========")
+        logger.debug(f"Received refresh request from IP={request.client.host}, UA={request.headers.get('user-agent')}")
+        logger.debug(f"Raw refresh_token (first 40 chars)={refresh_token[:40]}...")
 
+        # Decode JWT payload
         payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
         logger.debug(f"Decoded payload={payload}")
 
@@ -525,9 +527,7 @@ async def refresh_tokens(
         role = payload.get("role")
         university = payload.get("university")
 
-        logger.debug(
-            f"Extracted jti={jti}, user_id={user_id}, role={role}, university={university}"
-        )
+        logger.debug(f"Extracted jti={jti}, user_id={user_id}, role={role}, university={university}")
 
         if not all([jti, user_id, role, university]):
             logger.error("Missing fields in refresh token payload")
@@ -543,21 +543,27 @@ async def refresh_tokens(
         logger.debug(f"Rotating refresh token for user_id={user_id}")
         new_refresh = rotate_refresh_token(jti, user_id, role, university, ip, user_agent)
 
-        logger.debug("Creating new access token")
-        new_access = create_access_token({
-            "sub": payload.get("sub_email") or payload.get("sub"),
-            "role": role,
-            "premium": False,
-            "user_id": user_id,
-            "university": university,
-        })
+        logger.debug("Creating new access token (10 min expiry)")
+        new_access = create_access_token(
+            {
+                "sub": payload.get("sub_email") or payload.get("sub"),
+                "role": role,
+                "premium": False,
+                "user_id": user_id,
+                "university": university,
+            },
+            expires_delta=timedelta(minutes=10)   # 🔹 changed from 30 to 10
+        )
 
-        logger.info(f"Successfully refreshed tokens for user_id={user_id}")
+        logger.info(f"✅ Successfully refreshed tokens for user_id={user_id}")
+        logger.debug(f"New access_token (first 40 chars)={new_access[:40]}...")
+        logger.debug(f"New refresh_token (first 40 chars)={new_refresh[:40]}...")
+
         return {
             "access_token": new_access,
             "refresh_token": new_refresh,
             "token_type": "bearer",
-            "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60
+            "expires_in": 10 * 60   # 🔹 10 minutes in seconds
         }
 
     except JWTError:
@@ -566,6 +572,7 @@ async def refresh_tokens(
     except Exception as e:
         logger.exception("Unexpected error during token refresh")
         raise HTTPException(status_code=500, detail=f"Error refreshing token: {str(e)}")
+
 
 
 # ---------------------------
