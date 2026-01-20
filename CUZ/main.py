@@ -250,7 +250,7 @@ async def run_premium_expiry_check():
 @app.on_event("startup")
 async def startup_event():
     """
-    Runs on app startup: Schedules jobs. 
+    Runs on app startup: Schedules jobs and prints available routes.
     (Storage policy initialization removed as we are using the Media Proxy method).
     """
     # 1. Scheduler Logic
@@ -270,6 +270,13 @@ async def startup_event():
     scheduler.start()
     logger.info("[SCHEDULER] Premium expiry + event notifications scheduled daily.")
     logger.info("[STORAGE] Media Proxy is active at /media/{file_path}")
+
+    # ✅ Print all registered routes
+    logger.info("=== Registered Routes ===")
+    for route in app.routes:
+        logger.info(f"{route.path} -> methods={route.methods}")
+    logger.info("=== End of Route List ===")
+
 
 # ------------------------------
 # Payment Test Model
