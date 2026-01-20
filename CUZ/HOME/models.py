@@ -12,27 +12,21 @@ class BoardingHouseSummary(BaseModel):
     image_12: Optional[str] = None
     price_12: Optional[str] = None
     sharedroom_12: Optional[str] = None
-
     image_6: Optional[str] = None
     price_6: Optional[str] = None
     sharedroom_6: Optional[str] = None
-
     image_5: Optional[str] = None
     price_5: Optional[str] = None
     sharedroom_5: Optional[str] = None
-
     image_4: Optional[str] = None
     price_4: Optional[str] = None
     sharedroom_4: Optional[str] = None
-
     image_3: Optional[str] = None
     price_3: Optional[str] = None
     sharedroom_3: Optional[str] = None
-
     image_2: Optional[str] = None
     price_2: Optional[str] = None
     sharedroom_2: Optional[str] = None
-
     image_1: Optional[str] = None
     price_1: Optional[str] = None
     singleroom: Optional[str] = None
@@ -69,8 +63,15 @@ class BoardingHouseSummary(BaseModel):
     GPS_coordinates: Optional[List[float]] = None
     yango_coordinates: Optional[List[float]] = None
 
+    # ✅ New field: phone number stored directly on the boarding house
+    phone_number: Optional[str] = Field(
+        default=None,
+        description=""
+    )
+
     class Config:
         extra = "forbid"
+
 
 
 # ---------------------------
