@@ -1,11 +1,10 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict, Any
 from datetime import datetime
 
 # ---------------------------
 # Model for detailed view when a boarding house is clicked
 # ---------------------------
-
 class BoardingHouseSummary(BaseModel):
     name: str
 
@@ -43,25 +42,29 @@ class BoardingHouseSummary(BaseModel):
     price_apartment: Optional[str] = None
     apartment: Optional[str] = None
 
-    # ✅ Media fields
-    gallery_images: List[str] = []
-    videos: List[str] = []
-    voice_notes: List[str] = []
+    # Media fields
+    cover_image: Optional[str] = Field(
+        default=None,
+        description="Primary cover image URL for the listing"
+    )
+    gallery_images: List[str] = Field(default_factory=list, description="List of gallery image URLs (images only)")
+    videos: List[str] = Field(default_factory=list, description="List of video URLs (optional)")
+    voice_notes: List[str] = Field(default_factory=list, description="List of audio note URLs (optional)")
 
-    # ✅ New field: space availability description
+    # New field: space availability description
     space_description: str = Field(
         default="Kleno will update you when number of spaces is available.",
         description="Text describing the number of available spaces or a fallback message"
     )
 
-    # ✅ Landlord conditions/standards
+    # Landlord conditions/standards
     conditions: Optional[str] = Field(
         default=None,
         description="Brief description of landlord’s standards and conditions"
     )
 
     # Other metadata
-    amenities: List[str]
+    amenities: List[str] = Field(default_factory=list)
     location: Optional[str] = None
     GPS_coordinates: Optional[List[float]] = None
     yango_coordinates: Optional[List[float]] = None
@@ -70,21 +73,21 @@ class BoardingHouseSummary(BaseModel):
         extra = "forbid"
 
 
-
-
+# ---------------------------
 # Model for homepage display (sorted data with lowest price)
 # ---------------------------
 class BoardingHouseHomepage(BaseModel):
     id: str
     name_boardinghouse: str
-    #price: str
-    image: str
+    # price is intentionally optional/omitted here; use lowest price logic in service layer
+    image: str  # legacy single image field (kept for compatibility)
+    cover_image: Optional[str] = None  # preferred explicit cover image
     gender: Literal["male", "female", "mixed", "both"]
     location: Optional[str] = None
     rating: Optional[float] = None
     type: Optional[str] = None  # "boardinghouse" or "apartment"
 
-    # ✅ Optional teaser video
+    # Optional teaser video for homepage cards
     teaser_video: Optional[str] = None
 
     class Config:
@@ -94,8 +97,6 @@ class BoardingHouseHomepage(BaseModel):
 # ---------------------------
 # Model for adding/editing boarding houses
 # ---------------------------
-
-
 class BoardingHouse(BaseModel):
     name: str
     location: str
@@ -122,7 +123,7 @@ class BoardingHouse(BaseModel):
     singleroom: Optional[str] = Field(None, example="available")
     apartment: Optional[str] = Field(None, example="available")
 
-    # Images
+    # Images per room
     image_12: Optional[str] = None
     image_6: Optional[str] = None
     image_5: Optional[str] = None
@@ -132,10 +133,14 @@ class BoardingHouse(BaseModel):
     image_1: Optional[str] = None
     image_apartment: Optional[str] = None
 
-    # ✅ General gallery & media
-    images: List[str] = []
-    videos: List[str] = []       # Railway URLs for video tours
-    voice_notes: List[str] = []  # Railway URLs for audio notes
+    # General gallery & media
+    cover_image: Optional[str] = Field(
+        default=None,
+        description="Primary cover image URL for the listing"
+    )
+    images: List[str] = Field(default_factory=list, description="Gallery image URLs")
+    videos: List[str] = Field(default_factory=list, description="Video URLs")
+    voice_notes: List[str] = Field(default_factory=list, description="Audio note URLs")
 
     # Coordinates
     GPS_coordinates: Optional[List[float]] = None
@@ -147,23 +152,23 @@ class BoardingHouse(BaseModel):
     gender_both: Optional[bool] = False
 
     # Amenities and rating
-    amenities: List[str]
+    amenities: List[str] = Field(default_factory=list)
     rating: Optional[float] = None
 
-    # ✅ New field: landlord conditions/standards
+    # Landlord conditions/standards
     conditions: Optional[str] = Field(
         None,
         description="Brief description of landlord’s standards and conditions"
     )
 
-    # ✅ New field: space availability description
+    # Space availability description
     space_description: Optional[str] = Field(
-        default="Kleno will update you on the number of space is available. soon!",
+        default="Kleno will update you on the number of space available.",
         description="Text describing the number of available spaces or a fallback message"
     )
 
-    # ✅ Bus stop navigation
-    public_T: Optional[dict] = Field(
+    # Bus stop navigation / public transport info
+    public_T: Optional[Dict[str, Any]] = Field(
         default=None,
         example={
             "coordinates": [-15.4167, 28.2833],
@@ -179,4 +184,3 @@ class BoardingHouse(BaseModel):
 
     class Config:
         extra = "forbid"
-
