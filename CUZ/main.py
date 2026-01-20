@@ -80,6 +80,10 @@ debug_router = APIRouter(prefix="/debug", tags=["debug"])
 # Messages router must be defined BEFORE inclusion
 messages_router = APIRouter(prefix="/messages", tags=["messages"])
 
+# ==============================
+# Messages Router Endpoints
+# ==============================
+
 @messages_router.get("/{university}/{student_id}")
 async def get_student_messages(
     university: str,
@@ -88,8 +92,14 @@ async def get_student_messages(
     limit: int = Query(10, ge=1, le=50),
     current_user: dict = Depends(get_current_user),
 ):
+    """
+    Fetch paginated messages for a student (latest first).
+    """
     # Ownership check
-    if current_user.get("user_id") != student_id or current_user.get("university") != university:
+    if (
+        current_user.get("user_id") != student_id
+        or current_user.get("university") != university
+    ):
         raise HTTPException(status_code=403, detail="Not authorized")
 
     try:
@@ -102,38 +112,40 @@ async def get_student_messages(
         )
 
         docs = list(coll_ref.stream())
-        messages = []
-        for doc in docs:
-            data = doc.to_dict() or {}
-            messages.append(
-                {
-                    "id": doc.id,
-                    "title": data.get("title"),
-                    "body": data.get("body"),
-                    "timestamp": data.get("timestamp"),
-                    "read": data.get("read", False),
-                    "type": data.get("type", "system"),
-                }
-            )
+        messages = [
+            {
+                "id": doc.id,
+                "title": (doc.to_dict() or {}).get("title"),
+                "body": (doc.to_dict() or {}).get("body"),
+                "timestamp": (doc.to_dict() or {}).get("timestamp"),
+                "read": (doc.to_dict() or {}).get("read", False),
+                "type": (doc.to_dict() or {}).get("type", "system"),
+            }
+            for doc in docs
+        ]
 
-        # Sort by timestamp descending
-        messages.sort(key=lambda m: m.get("timestamp", "") or "", reverse=True)
+        # newest first
+        messages.sort(
+            key=lambda m: m.get("timestamp") or "",
+            reverse=True,
+        )
 
-        # Pagination logic
         start = (page - 1) * limit
-        end = min(start + limit, len(messages))
-        paginated = messages[start:end]
+        end = start + limit
 
         return {
-            "data": paginated,
+            "data": messages[start:end],
             "total": len(messages),
             "total_pages": (len(messages) + limit - 1) // limit,
             "current_page": page,
         }
 
     except Exception as e:
-        logger.exception("❌ get_student_messages error: %s", e)
-        raise HTTPException(status_code=500, detail=f"Error fetching messages: {str(e)}")
+        logger.exception("❌ get_student_messages failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching messages: {str(e)}",
+        )
 
 
 @messages_router.put("/{university}/{student_id}/{message_id}/read")
@@ -143,7 +155,13 @@ async def mark_message_read(
     message_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    if current_user.get("user_id") != student_id or current_user.get("university") != university:
+    """
+    Mark a specific message as read.
+    """
+    if (
+        current_user.get("user_id") != student_id
+        or current_user.get("university") != university
+    ):
         raise HTTPException(status_code=403, detail="Not authorized")
 
     try:
@@ -156,26 +174,32 @@ async def mark_message_read(
             .document(message_id)
         )
 
-        doc = doc_ref.get()
-        if not doc.exists:
+        if not doc_ref.get().exists:
             raise HTTPException(status_code=404, detail="Message not found")
 
         doc_ref.set({"read": True}, merge=True)
-        return {"ok": True, "message": "Message marked as read"}
+        return {"ok": True}
 
     except Exception as e:
-        logger.exception("❌ mark_message_read error: %s", e)
+        logger.exception("❌ mark_message_read failed")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Logging setup
+# ==============================
+# Logging
+# ==============================
+
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("main")
 
-# Debug route
+
+# ==============================
+# Debug Router
+# ==============================
+
 @debug_router.post("/headers")
 async def debug_headers(request: Request):
     return {
@@ -184,40 +208,53 @@ async def debug_headers(request: Request):
         "host": request.headers.get("host"),
     }
 
-# CORS
+
+# ==============================
+# Middleware
+# ==============================
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten in prod if needed
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Rate limiter
 limiter = Limiter(key_func=get_remote_address, default_limits=["1000/hour"])
 app.state.limiter = limiter
+
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     response = JSONResponse(
         status_code=429,
         content={
-            "detail": "Too many requests. Please slow down.",
-            "limit": str(exc.detail),
+            "detail": "Too many requests",
             "retry_after_seconds": exc.reset_in,
         },
     )
     response.headers["Retry-After"] = str(exc.reset_in)
-     
     return response
 
-webhook_router = APIRouter(prefix="/webhook", tags=["webhook"])
-# Always available (no auth required)
-app.include_router(debug_router)
-app.include_router(user_router)        # login/signup open
-app.include_router(webhook_router)     # webhook open
 
-# Protected routers (require JWT Bearer token)
+# ==============================
+# Webhook Router
+# ==============================
+
+webhook_router = APIRouter(prefix="/webhook", tags=["webhook"])
+
+
+# ==============================
+# Router Registration
+# ==============================
+
+# Public
+app.include_router(debug_router)
+app.include_router(user_router)
+app.include_router(webhook_router)
+
+# Protected
 app.include_router(messages_router, dependencies=[Depends(get_current_user)])
 app.include_router(user_home_router, dependencies=[Depends(get_current_user)])
 app.include_router(pinned_router, dependencies=[Depends(get_current_user)])
@@ -231,288 +268,34 @@ app.include_router(proxily_router, dependencies=[Depends(get_current_user)])
 app.include_router(lenco_router, dependencies=[Depends(get_current_user)])
 
 
+# ==============================
+# Health / Ping
+# ==============================
 
-# Ping endpoint
 @app.get("/ping")
 @limiter.limit("5/minute")
 async def ping(request: Request):
     return {"message": "pong"}
 
-# Premium expiry check endpoint (manual trigger)
-@app.post("/payments/check-expiry")
-async def run_premium_expiry_check():
-    try:
-        check_and_update_premium_expiry()
-        return {"ok": True, "message": "Premium expiry check completed"}
-    except Exception as e:
-        logger.error(f"[EXPIRY CHECK] Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Expiry check failed: {str(e)}")
 
-# Startup scheduled job
-@app.on_event("startup")
-async def startup_event():
-    """
-    Runs on app startup: Schedules jobs and prints available routes.
-    (Storage policy initialization removed as we are using the Media Proxy method).
-    """
-    # 1. Scheduler Logic
-    scheduler = AsyncIOScheduler()
+# ==============================
+# Payment Test Endpoint
+# ==============================
 
-    # Existing premium expiry check
-    scheduler.add_job(check_and_update_premium_expiry, "interval", days=1)
-
-    # Run event notifications daily at 07:00 for each university
-    for uni in ["CUZ", "UNZA", "CBU"]:
-        scheduler.add_job(
-            lambda u=uni: asyncio.create_task(notify_upcoming_events(u)),
-            "cron",
-            hour=7,
-        )
-
-    scheduler.start()
-    logger.info("[SCHEDULER] Premium expiry + event notifications scheduled daily.")
-    logger.info("[STORAGE] Media Proxy is active at /media/{file_path}")
-
-    # ✅ Print all registered routes
-    logger.info("=== Registered Routes ===")
-    for route in app.routes:
-        logger.info(f"{route.path} -> methods={route.methods}")
-    logger.info("=== End of Route List ===")
-
-
-# ------------------------------
-# Payment Test Model
-# ------------------------------
 class PaymentRequest(BaseModel):
     student_id: str
     university: str
     msisdn: str
 
-@app.post("/payments/test")
-async def test_payment(req: PaymentRequest):
-    try:
-        logger.debug(f"[PAYMENT TEST] student_id={req.student_id} university={req.university} msisdn={req.msisdn}")
-
-        result = await process_payment(
-            student_id=req.student_id,
-            university=req.university,
-            promo_code=None,
-            override_msisdn=req.msisdn,
-        )
-
-        # Wrap orchestration result in Lenco-style schema
-        return {
-            "status": True if isinstance(result, dict) else False,
-            "message": "Payment test processed",
-            "data": [result] if isinstance(result, dict) else [],
-            "meta": {
-                "total": 1 if isinstance(result, dict) else 0,
-                "pageCount": 1,
-                "perPage": 1,
-                "currentPage": 1
-            }
-        }
-
-    except Exception as e:
-        logger.error(f"[PAYMENT TEST] Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Payment failed: {str(e)}")
-
-
-
-
-# ------------------------------
-# Webhook (Lenco -> your app)
-# ------------------------------
-WEBHOOK_SIGNING_SECRET = "99137b878b12cd6e1a874f528ba48afc71b99077a4a763880ec536855fccec48"
-POSSIBLE_SIGNATURE_HEADERS = [
-    "x-lenco-signature",
-    "lenco-signature",
-    "x-webhook-signature",
-    "x-signature",
-    "signature",
-]
-
-
-
-def _verify_webhook_signature(secret: str, body: bytes, header_value: str) -> bool:
-    if not header_value:
-        return False
-    if "=" in header_value and header_value.split("=", 1)[0].lower() in {"sha256", "sha1"}:
-        _, header_value = header_value.split("=", 1)
-    try:
-        computed = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(computed, header_value)
-    except Exception as e:
-        logger.exception("[WEBHOOK] signature verification error: %s", e)
-        return False
-
-
-@webhook_router.post("/lenco")
-async def lenco_webhook(request: Request):
-    try:
-        raw_body = await request.body()
-        header_sig = None
-        for hname in POSSIBLE_SIGNATURE_HEADERS:
-            val = request.headers.get(hname)
-            if val:
-                header_sig = val
-                break
-
-        if not header_sig:
-            logger.warning("[WEBHOOK] No signature header found. Rejecting.")
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing signature header")
-
-        if not _verify_webhook_signature(WEBHOOK_SIGNING_SECRET, raw_body, header_sig):
-            logger.warning("[WEBHOOK] Signature mismatch.")
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
-
-        try:
-            data = await request.json()
-        except Exception:
-            import json as _json
-            data = _json.loads(raw_body.decode("utf-8"))
-
-        transaction_id = data.get("id")
-        status_val = data.get("status")
-        metadata = data.get("metadata", {})
-
-        student_id = metadata.get("student_id")
-        university = metadata.get("university")
-
-        if not student_id or not university:
-            logger.error("[WEBHOOK] Missing student_id or university in metadata")
-            return JSONResponse(status_code=400, content={"ok": False, "error": "Missing student_id or university"})
-
-        logger.info(f"[WEBHOOK] student_id={student_id} university={university} status={status_val} transaction_id={transaction_id}")
-
-        student = get_student_record(student_id, university) or {}
-        if status_val and str(status_val).upper() == "SUCCESSFUL":
-            now = datetime.utcnow()
-            student["premium"] = True
-            student["premiumActivatedAt"] = now.isoformat()
-            student["premiumExpiresAt"] = (now + relativedelta(months=1)).isoformat()
-            save_student_record(student_id, university, student)
-            logger.info(f"[WEBHOOK] Premium activated for {student_id}@{university}")
-
-        return {"ok": True, "transaction_id": transaction_id, "status": status_val}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("[WEBHOOK] Unexpected error processing webhook: %s", e)
-        raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("[WEBHOOK] Unexpected error processing webhook: %s", e)
-        raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")
-
-
-# ------------------------------
-# Messages endpoints (already protected via router dependency)
-# ------------------------------
-@messages_router.get("/{university}/{student_id}")
-async def get_student_messages(
-    university: str,
-    student_id: str,
-    page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1, le=50),
-    current_user: dict = Depends(get_current_user),
-):
-    """Fetch personal messages for a student."""
-    # Ownership check
-    if current_user.get("user_id") != student_id or current_user.get("university") != university:
-        raise HTTPException(status_code=403, detail="Not authorized")
-
-    try:
-        coll_ref = (
-            db.collection("MESSAGES")
-            .document(university)
-            .collection("students")
-            .document(student_id)
-            .collection("messages")
-        )
-
-        docs = list(coll_ref.stream())
-        messages = []
-        for doc in docs:
-            data = doc.to_dict() or {}
-            messages.append(
-                {
-                    "id": doc.id,
-                    "title": data.get("title"),
-                    "body": data.get("body"),
-                    "timestamp": data.get("timestamp"),
-                    "read": data.get("read", False),
-                    "type": data.get("type", "system"),
-                }
-            )
-
-        # Sort by timestamp descending
-        messages.sort(key=lambda m: m.get("timestamp", "") or "", reverse=True)
-
-        # Pagination logic
-        start = (page - 1) * limit
-        end = min(start + limit, len(messages))
-        paginated = messages[start:end]
-
-        return {
-            "data": paginated,
-            "total": len(messages),
-            "total_pages": (len(messages) + limit - 1) // limit,
-            "current_page": page,
-        }
-
-    except Exception as e:
-        logger.exception("❌ get_student_messages error: %s", e)
-        raise HTTPException(status_code=500, detail=f"Error fetching messages: {str(e)}")
-
-
-@messages_router.put("/{university}/{student_id}/{message_id}/read")
-async def mark_message_read(
-    university: str,
-    student_id: str,
-    message_id: str,
-    current_user: dict = Depends(get_current_user),
-):
-    """Mark a message as read for a student."""
-    if current_user.get("user_id") != student_id or current_user.get("university") != university:
-        raise HTTPException(status_code=403, detail="Not authorized")
-
-    try:
-        doc_ref = (
-            db.collection("MESSAGES")
-            .document(university)
-            .collection("students")
-            .document(student_id)
-            .collection("messages")
-            .document(message_id)
-        )
-
-        doc = doc_ref.get()
-        if not doc.exists:
-            raise HTTPException(status_code=404, detail="Message not found")
-
-        doc_ref.set({"read": True}, merge=True)
-        return {"ok": True, "message": "Message marked as read"}
-
-    except Exception as e:
-        logger.exception("❌ mark_message_read error: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ------------------------------
-# Payment Test Model + endpoint
-# ------------------------------
-class PaymentRequest(BaseModel):
-    student_id: str
-    university: str
-    msisdn: str
 
 @app.post("/payments/test")
 async def test_payment(req: PaymentRequest):
     try:
-        logger.debug(f"[PAYMENT TEST] student_id={req.student_id} university={req.university} msisdn={req.msisdn}")
+        logger.debug(
+            "[PAYMENT TEST] student=%s university=%s",
+            req.student_id,
+            req.university,
+        )
 
         result = await process_payout(
             student_id=req.student_id,
@@ -521,20 +304,17 @@ async def test_payment(req: PaymentRequest):
         )
 
         return {
-            "status": True if isinstance(result, dict) else False,
+            "status": isinstance(result, dict),
             "message": "Payment test processed",
             "data": [result] if isinstance(result, dict) else [],
-            "meta": {
-                "total": 1 if isinstance(result, dict) else 0,
-                "pageCount": 1,
-                "perPage": 1,
-                "currentPage": 1
-            }
         }
 
     except Exception as e:
-        logger.exception("[PAYMENT TEST] Error: %s", e)
-        raise HTTPException(status_code=500, detail=f"Payment failed: {str(e)}")
+        logger.exception("[PAYMENT TEST] failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Payment failed: {str(e)}",
+        )
 
 
 # ------------------------------
