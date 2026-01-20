@@ -611,7 +611,7 @@ async def get_landlord_phone(
     current_user: dict = Depends(get_premium_student),  # ✅ premium-only
 ):
     """
-    Fetch landlord phone number for a boarding house.
+    Fetch boarding house phone number directly.
     Premium students only.
     """
     try:
@@ -623,34 +623,20 @@ async def get_landlord_phone(
             raise HTTPException(status_code=404, detail="Boarding house not found")
 
         data = ref.to_dict()
-        landlord_id = data.get("landlord_id")
-        if not landlord_id:
-            raise HTTPException(status_code=404, detail="Landlord not linked to this boarding house")
-
-        # Fetch landlord profile
-        landlord_ref = db.collection("USERS").document(university).collection("landlords").document(landlord_id).get()
-        if not landlord_ref.exists:
-            raise HTTPException(status_code=404, detail="Landlord not found")
-
-        landlord_data = landlord_ref.to_dict()
-        phone_number = landlord_data.get("phone_number")
+        phone_number = data.get("phone_number")
         if not phone_number:
-            raise HTTPException(status_code=404, detail="Landlord phone number not available")
+            raise HTTPException(status_code=404, detail="Phone number not available for this boarding house")
 
         return {
-            "landlord_id": landlord_id,
+            "house_id": id,
             "phone_number": phone_number,
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching landlord phone number: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching boarding house phone number: {str(e)}")
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching landlord phone number: {str(e)}")
 
 
 
