@@ -208,7 +208,8 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
         },
     )
     response.headers["Retry-After"] = str(exc.reset_in)
-     return response
+     
+    return response
 
 webhook_router = APIRouter(prefix="/webhook", tags=["webhook"])
 # Always available (no auth required)
