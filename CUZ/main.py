@@ -243,32 +243,6 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 # ==============================
 
 webhook_router = APIRouter(prefix="/webhook", tags=["webhook"])
-
-
-# ==============================
-# Router Registration
-# ==============================
-
-# Public
-app.include_router(debug_router)
-app.include_router(user_router)
-app.include_router(webhook_router)
-
-# Protected
-app.include_router(messages_router, dependencies=[Depends(get_current_user)])
-app.include_router(user_home_router, dependencies=[Depends(get_current_user)])
-app.include_router(pinned_router, dependencies=[Depends(get_current_user)])
-app.include_router(pinned_user_routes.router, dependencies=[Depends(get_current_user)])
-app.include_router(available_router, dependencies=[Depends(get_current_user)])
-app.include_router(event_router, dependencies=[Depends(get_current_user)])
-app.include_router(notification_router, dependencies=[Depends(get_current_user)])
-app.include_router(boardinghouse_router, dependencies=[Depends(get_current_user)])
-app.include_router(store_router, dependencies=[Depends(get_current_user)])
-app.include_router(proxily_router, dependencies=[Depends(get_current_user)])
-app.include_router(webhook_router)
-
-
-
 # ------------------------------
 # Webhook (Lenco -> your app)
 # ------------------------------
@@ -352,6 +326,33 @@ async def lenco_webhook(request: Request):
     except Exception as e:
         logger.exception("[WEBHOOK] Unexpected error processing webhook: %s", e)
         raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")
+
+
+# ==============================
+# Router Registration
+# ==============================
+
+# Public
+app.include_router(debug_router)
+app.include_router(user_router)
+app.include_router(webhook_router)
+
+# Protected
+app.include_router(messages_router, dependencies=[Depends(get_current_user)])
+app.include_router(user_home_router, dependencies=[Depends(get_current_user)])
+app.include_router(pinned_router, dependencies=[Depends(get_current_user)])
+app.include_router(pinned_user_routes.router, dependencies=[Depends(get_current_user)])
+app.include_router(available_router, dependencies=[Depends(get_current_user)])
+app.include_router(event_router, dependencies=[Depends(get_current_user)])
+app.include_router(notification_router, dependencies=[Depends(get_current_user)])
+app.include_router(boardinghouse_router, dependencies=[Depends(get_current_user)])
+app.include_router(store_router, dependencies=[Depends(get_current_user)])
+app.include_router(proxily_router, dependencies=[Depends(get_current_user)])
+
+
+
+
+
 
 # ==============================
 # Health / Ping
