@@ -208,8 +208,9 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
         },
     )
     response.headers["Retry-After"] = str(exc.reset_in)
-    return response
+     return response
 
+webhook_router = APIRouter(prefix="/webhook", tags=["webhook"])
 # Always available (no auth required)
 app.include_router(debug_router)
 app.include_router(user_router)        # login/signup open
@@ -316,7 +317,7 @@ async def test_payment(req: PaymentRequest):
         raise HTTPException(status_code=500, detail=f"Payment failed: {str(e)}")
 
 
-webhook_router = APIRouter(prefix="/webhook", tags=["webhook"])
+
 
 # ------------------------------
 # Webhook (Lenco -> your app)
