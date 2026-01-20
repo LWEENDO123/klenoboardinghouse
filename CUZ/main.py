@@ -268,6 +268,90 @@ app.include_router(proxily_router, dependencies=[Depends(get_current_user)])
 app.include_router(lenco_router, dependencies=[Depends(get_current_user)])
 
 
+# ------------------------------
+# Webhook (Lenco -> your app)
+# ------------------------------
+WEBHOOK_SIGNING_SECRET = "99137b878b12cd6e1a874f528ba48afc71b99077a4a763880ec536855fccec48"
+POSSIBLE_SIGNATURE_HEADERS = [
+    "x-lenco-signature",
+    "lenco-signature",
+    "x-webhook-signature",
+    "x-signature",
+    "signature",
+]
+
+def _verify_webhook_signature(secret: str, body: bytes, header_value: str) -> bool:
+    if not header_value:
+        return False
+    if "=" in header_value and header_value.split("=", 1)[0].lower() in {"sha256", "sha1"}:
+        _, header_value = header_value.split("=", 1)
+    try:
+        computed = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(computed, header_value)
+    except Exception as e:
+        logger.exception("[WEBHOOK] signature verification error: %s", e)
+        return False
+
+@webhook_router.post("/lenco")
+async def lenco_webhook(request: Request):
+    try:
+        raw_body = await request.body()
+        header_sig = None
+        for hname in POSSIBLE_SIGNATURE_HEADERS:
+            val = request.headers.get(hname)
+            if val:
+                header_sig = val
+                break
+
+        if not header_sig:
+            logger.warning("[WEBHOOK] No signature header found. Rejecting.")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing signature header")
+
+        if not _verify_webhook_signature(WEBHOOK_SIGNING_SECRET, raw_body, header_sig):
+            logger.warning("[WEBHOOK] Signature mismatch.")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
+
+        try:
+            data = await request.json()
+        except Exception:
+            import json as _json
+            data = _json.loads(raw_body.decode("utf-8"))
+
+        transaction_id = data.get("id")
+        status_val = data.get("status")
+        metadata = data.get("metadata", {})
+
+        student_id = metadata.get("student_id")
+        university = metadata.get("university")
+
+        if not student_id or not university:
+            logger.error("[WEBHOOK] Missing student_id or university in metadata")
+            return JSONResponse(status_code=400, content={"ok": False, "error": "Missing student_id or university"})
+
+        logger.info(f"[WEBHOOK] student_id={student_id} university={university} status={status_val} transaction_id={transaction_id}")
+
+        student = get_student_record(student_id, university) or {}
+        if status_val and str(status_val).upper() == "SUCCESSFUL":
+            now = datetime.utcnow()
+            student["premium"] = True
+            student["premiumActivatedAt"] = now.isoformat()
+            student["premiumExpiresAt"] = (now + relativedelta(months=1)).isoformat()
+            save_student_record(student_id, university, student)
+            logger.info(f"[WEBHOOK] Premium activated for {student_id}@{university}")
+
+        return {"ok": True, "transaction_id": transaction_id, "status": status_val}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("[WEBHOOK] Unexpected error processing webhook: %s", e)
+        raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("[WEBHOOK] Unexpected error processing webhook: %s", e)
+        raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")
+
 # ==============================
 # Health / Ping
 # ==============================
