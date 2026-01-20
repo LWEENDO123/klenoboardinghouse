@@ -57,21 +57,21 @@ async def get_home(
             universities = [uni]
 
         # Primary query: global BOARDINGHOUSES
-        boardinghouses_ref = (
+        boardinghouses_docs = (
             db.collection("BOARDINGHOUSES")
             .where("universities", "array_contains_any", universities)
             .get()
         )
 
         # Fallback: scoped HOME/{uni}/BOARDHOUSE
-        if not boardinghouses_ref:
-            boardinghouses_ref = (
+        if not boardinghouses_docs:
+            boardinghouses_docs = (
                 db.collection("HOME").document(uni).collection("BOARDHOUSE").get()
             )
 
         houses = []
-        for doc in boardinghouses_ref or []:
-            data = doc.to_dict()
+        for doc in boardinghouses_docs or []:
+            data = doc.to_dict() or {}
             data["id"] = doc.id
 
             # Normalize created_at
@@ -86,7 +86,7 @@ async def get_home(
             houses.append(data)
 
         # Apply filter
-        if filter == "new":
+        if filter.lower() == "new":
             houses.sort(key=lambda h: h.get("created_at", datetime.min), reverse=True)
 
         # Pagination
@@ -97,19 +97,31 @@ async def get_home(
 
         homepage_data = []
         for data in paginated:
-            image = (
-                data.get("image_12")
-                or data.get("image_6")
-                or data.get("image_5")
-                or data.get("image_4")
-                or data.get("image_3")
-                or data.get("image_2")
+            # Prefer explicit cover_image, then legacy image fields, then first gallery image
+            images_list = []
+            if isinstance(data.get("gallery_images"), list):
+                images_list.extend([str(x) for x in data.get("gallery_images") if x])
+            if isinstance(data.get("images"), list):
+                images_list.extend([str(x) for x in data.get("images") if x])
+            # legacy single image fields
+            legacy_image = (
+                data.get("cover_image")
+                or data.get("coverImage")
+                or data.get("image")
                 or data.get("image_1")
+                or data.get("image_2")
+                or data.get("image_3")
+                or data.get("image_4")
+                or data.get("image_5")
+                or data.get("image_6")
+                or data.get("image_12")
                 or data.get("image_apartment")
-                or (data.get("images", []) or [None])[0]
-                or "https://via.placeholder.com/400x200"
             )
+            cover = str(legacy_image) if legacy_image else (images_list.isNotEmpty and images_list[0] if images_list else None)
+            if not cover:
+                cover = "https://via.placeholder.com/400x200"
 
+            # Gender resolution
             gender = (
                 "mixed" if data.get("gender_both")
                 else "male" if data.get("gender_male")
@@ -117,18 +129,19 @@ async def get_home(
                 else "both"
             )
 
-            homepage_data.append(
-                BoardingHouseHomepage(
-                    id=data["id"],
-                    name_boardinghouse=data.get("name", "Unnamed"),
-                    image=image,
-                    gender=gender,
-                    location=data.get("location", ""),
-                    rating=data.get("rating"),
-                    type=data.get("type", "boardinghouse"),
-                    teaser_video=data.get("teaser_video") or data.get("video"),
-                )
+            homepage_item = BoardingHouseHomepage(
+                id=str(data.get("id", "")),
+                name_boardinghouse=str(data.get("name", data.get("name_boardinghouse", "Unnamed"))),
+                image=cover,
+                cover_image=str(data.get("cover_image") or cover),
+                gender=gender,
+                location=str(data.get("location", "") or ""),
+                rating=(data.get("rating") if isinstance(data.get("rating"), (int, float)) else None),
+                type=str(data.get("type", "boardinghouse")),
+                teaser_video=str(data.get("teaser_video") or data.get("video") or "") if (data.get("teaser_video") or data.get("video")) else None,
             )
+
+            homepage_data.append(homepage_item.dict())
 
         return {
             "data": homepage_data,
@@ -144,13 +157,8 @@ async def get_home(
         raise HTTPException(status_code=500, detail=f"Error fetching homepage data: {str(e)}")
 
 
-
-  
-
-
-
 # ---------------------------
-# GET /home/boardinghouse/{id} 
+# GET /home/boardinghouse/{id}
 # ---------------------------
 @router.get("/boardinghouse/{id}", response_model=BoardingHouseSummary)
 async def get_boardinghouse_summary(
@@ -167,9 +175,21 @@ async def get_boardinghouse_summary(
     if not ref.exists:
         raise HTTPException(status_code=404, detail="Boarding house not found")
 
-    data = ref.to_dict()
+    data = ref.to_dict() or {}
 
-    return {
+    # Normalize gallery_images: prefer explicit key, fallback to images/gallery
+    gallery = []
+    if isinstance(data.get("gallery_images"), list):
+        gallery = [str(x) for x in data.get("gallery_images") if x]
+    elif isinstance(data.get("images"), list):
+        gallery = [str(x) for x in data.get("images") if x]
+    elif isinstance(data.get("gallery"), list):
+        gallery = [str(x) for x in data.get("gallery") if x]
+
+    # Normalize cover image
+    cover_image = data.get("cover_image") or data.get("coverImage") or data.get("image") or (gallery[0] if gallery else None)
+
+    payload = {
         "name": data.get("name", "Unnamed"),
 
         # Room types
@@ -201,18 +221,26 @@ async def get_boardinghouse_summary(
         "apartment": data.get("apartment"),
 
         # Media
-        "gallery_images": data.get("images", []),
-        "videos": data.get("videos", []),
-        "voice_notes": data.get("voice_notes", []),
+        "cover_image": cover_image,
+        "gallery_images": gallery,
+        "videos": data.get("videos", []) or [],
+        "voice_notes": data.get("voice_notes", []) or [],
 
         # Metadata
-        "space_description": data.get("space_description"),
+        "space_description": data.get("space_description") or data.get("spaceDescription") or BoardingHouseSummary.__fields__['space_description'].get_default(),
         "conditions": data.get("conditions"),
-        "amenities": data.get("amenities", []),
-        "location": data.get("location", ""),
+        "amenities": data.get("amenities", []) or [],
+        "location": data.get("location", "") or "",
         "GPS_coordinates": data.get("GPS_coordinates"),
         "yango_coordinates": data.get("yango_coordinates"),
     }
+
+    # Validate and return via Pydantic model
+    try:
+        return BoardingHouseSummary(**payload)
+    except Exception as e:
+        # If validation fails, return a 500 with details for easier debugging
+        raise HTTPException(status_code=500, detail=f"Boarding house payload validation error: {str(e)}")
 
  
 
