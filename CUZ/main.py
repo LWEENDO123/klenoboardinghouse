@@ -203,10 +203,18 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return response
 
 
+import os
+
 # ------------------------------
 # Webhook (Lenco -> your app)
 # ------------------------------
-WEBHOOK_SIGNING_SECRET = "99137b878b12cd6e1a874f528ba48afc71b99077a4a763880ec536855fccec48"
+
+# Load secret from Railway environment variable
+WEBHOOK_SIGNING_SECRET = os.getenv(
+    "WEBHOOK_SIGNING_SECRET",
+    "dev-fallback-secret"  # optional fallback for local testing
+)
+
 POSSIBLE_SIGNATURE_HEADERS = [
     "x-lenco-signature",
     "lenco-signature",
@@ -281,11 +289,7 @@ async def lenco_webhook(request: Request):
     except Exception as e:
         logger.exception("[WEBHOOK] Unexpected error processing webhook: %s", e)
         raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("[WEBHOOK] Unexpected error processing webhook: %s", e)
-        raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")
+
 
 
 # Always available (no auth required)
