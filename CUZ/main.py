@@ -315,6 +315,9 @@ async def test_payment(req: PaymentRequest):
         logger.error(f"[PAYMENT TEST] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Payment failed: {str(e)}")
 
+
+webhook_router = APIRouter(prefix="/webhook", tags=["webhook"])
+
 # ------------------------------
 # Webhook (Lenco -> your app)
 # ------------------------------
@@ -326,6 +329,8 @@ POSSIBLE_SIGNATURE_HEADERS = [
     "x-signature",
     "signature",
 ]
+
+
 
 def _verify_webhook_signature(secret: str, body: bytes, header_value: str) -> bool:
     if not header_value:
@@ -339,7 +344,7 @@ def _verify_webhook_signature(secret: str, body: bytes, header_value: str) -> bo
         logger.exception("[WEBHOOK] signature verification error: %s", e)
         return False
 
-webhook_router = APIRouter(prefix="/webhook", tags=["webhook"])
+
 @webhook_router.post("/lenco")
 async def lenco_webhook(request: Request):
     try:
