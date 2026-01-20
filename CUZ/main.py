@@ -75,7 +75,7 @@ app = FastAPI(title="Baodinghouse API")
 
 # Routers
 debug_router = APIRouter(prefix="/debug", tags=["debug"])
-webhook_router = APIRouter(prefix="/webhook", tags=["webhook"])
+
 
 # Messages router must be defined BEFORE inclusion
 messages_router = APIRouter(prefix="/messages", tags=["messages"])
@@ -339,6 +339,7 @@ def _verify_webhook_signature(secret: str, body: bytes, header_value: str) -> bo
         logger.exception("[WEBHOOK] signature verification error: %s", e)
         return False
 
+webhook_router = APIRouter(prefix="/webhook", tags=["webhook"])
 @webhook_router.post("/lenco")
 async def lenco_webhook(request: Request):
     try:
