@@ -126,7 +126,6 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
 async def get_current_user(request: Request, credentials=Depends(security)):
     token = credentials.credentials
     try:
-        # ✅ Use Firestore-backed secret key
         payload = jwt.decode(token, get_secret_key(), algorithms=[ALGORITHM])
 
         sub = payload.get("sub")
@@ -137,6 +136,18 @@ async def get_current_user(request: Request, credentials=Depends(security)):
 
         if not sub or not role:
             raise HTTPException(status_code=401, detail="Invalid token payload")
+
+        # 🔒 Enforce one-device-per-account
+        doc = db.collection("DEVICES").document(user_id).get()
+        if not doc.exists:
+            raise HTTPException(status_code=401, detail="No active device registered")
+
+        device_info = doc.to_dict()
+        # Compare Firestore device_token with what the client is using
+        # You can embed the device_token in the JWT at login, or pass it in headers
+        current_device_token = request.headers.get("x-device-token")
+        if not current_device_token or device_info.get("device_token") != current_device_token:
+            raise HTTPException(status_code=401, detail="Logged in on another device")
 
         # Admin bypass
         if role == "admin":
@@ -180,6 +191,7 @@ async def get_current_user(request: Request, credentials=Depends(security)):
     except Exception:
         logger.exception("Error validating user")
         raise HTTPException(status_code=500, detail="Error validating user")
+
 
 
 # ---------------------------
