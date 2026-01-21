@@ -650,3 +650,36 @@ async def register_fcm(
 
 
 
+@app.get("/media/{file_path:path}")
+async def get_media_proxy(file_path: str):
+    """
+    Streams the image with correct headers to prevent forced downloads.
+    """
+    try:
+        # 1. Fetch from S3
+        obj = s3_client.get_object(Bucket=RAILWAY_BUCKET, Key=file_path)
+        
+        # 2. Get the specific content type (e.g., image/jpeg, image/png)
+        content_type = obj.get('ContentType', 'image/jpeg')
+
+        # 3. Stream with headers that force 'inline' display
+        return StreamingResponse(
+            obj['Body'], 
+            media_type=content_type,
+            headers={
+                # 'inline' tells the browser: "Show this on the screen"
+                "Content-Disposition": f"inline; filename={file_path.split('/')[-1]}",
+                # Cache for 1 year to make the yearbook feel snappy
+                "Cache-Control": "public, max-age=31536000",
+                # Prevents browsers from trying to guess a different MIME type
+                "X-Content-Type-Options": "nosniff"
+            }
+        )
+    except s3_client.exceptions.NoSuchKey:
+        raise HTTPException(status_code=404, detail="Image not found")
+    except Exception as e:
+        logger.error(f"Proxy streaming error: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching image")
+
+
+
