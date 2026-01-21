@@ -548,24 +548,21 @@ async def register_device(
     req: DeviceRegisterRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """
-    Register a device for notifications / tracking.
-    - Students: must match their own student_id + university
-    - Landlords/Admins: must match their own user_id + role
-    Stores under DEVICES/{user_id} with metadata.
-    """
-    # ✅ Ownership / role check
-    if current_user.get("role") == "student":
-        if current_user.get("user_id") != req.user_id or current_user.get("university") != req.university:
-            raise HTTPException(status_code=403, detail="Not authorized as student")
-    elif current_user.get("role") in ["landlord", "admin"]:
-        if current_user.get("user_id") != req.user_id or current_user.get("role") != req.role:
-            raise HTTPException(status_code=403, detail="Not authorized as landlord/admin")
-    else:
-        raise HTTPException(status_code=403, detail="Unsupported role")
+    # Ownership check
+    if current_user.get("user_id") != req.user_id or current_user.get("university") != req.university:
+        raise HTTPException(status_code=403, detail="Not authorized")
 
     try:
         doc_ref = db.collection("DEVICES").document(req.user_id)
+        existing = doc_ref.get().to_dict() if doc_ref.get().exists else None
+
+        # If another device was registered before, invalidate it
+        if existing and existing.get("device_token") != req.device_token:
+            # Option 1: overwrite and mark old as invalid
+            # Option 2: send push notification to old device to log out
+            logger.info(f"Invalidating old device for user {req.user_id}")
+
+        # Save the new device as the only active one
         doc_ref.set({
             "university": req.university,
             "user_id": req.user_id,
@@ -573,12 +570,10 @@ async def register_device(
             "device_token": req.device_token,
             "platform": req.platform,
             "registered_at": datetime.utcnow().isoformat(),
-        }, merge=True)
+            "active": True,
+        })
 
-        return {"ok": True, "message": f"Device registered for {req.role}"}
+        return {"ok": True, "message": f"Device registered for {req.role}, old device invalidated"}
     except Exception as e:
         logger.exception("❌ Device registration error: %s", e)
         raise HTTPException(status_code=500, detail=f"Error registering device: {str(e)}")
-
-
-
