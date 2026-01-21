@@ -532,13 +532,13 @@ async def firebase_health():
 
 
 # ------------------------------
-# Device Registration Endpoint
+# Device Registration Endpoint (updated)
 # ------------------------------
 from pydantic import BaseModel
 
 class DeviceRegisterRequest(BaseModel):
     university: str
-    user_id: str          # can be student_id or landlord_id
+    user_id: str          # student_id or landlord_id
     role: str             # "student", "landlord", or "admin"
     device_token: str     # FCM token or unique device ID
     platform: str = "android"  # optional: android/ios/web
@@ -548,21 +548,32 @@ async def register_device(
     req: DeviceRegisterRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    # Ownership check
-    if current_user.get("user_id") != req.user_id or current_user.get("university") != req.university:
-        raise HTTPException(status_code=403, detail="Not authorized")
+    """
+    Register or update the active device for a user.
+    - Enforces one-device-per-account.
+    - Invalidates old device if token changes.
+    - Allows first-time registration even if no DEVICES doc exists yet.
+    """
+
+    # Ownership check: enforce if JWT is present
+    if current_user:
+        if current_user.get("user_id") != req.user_id or current_user.get("university") != req.university:
+            raise HTTPException(status_code=403, detail="Not authorized")
 
     try:
         doc_ref = db.collection("DEVICES").document(req.user_id)
-        existing = doc_ref.get().to_dict() if doc_ref.get().exists else None
+        existing_doc = doc_ref.get()
+        existing = existing_doc.to_dict() if existing_doc.exists else None
 
-        # If another device was registered before, invalidate it
+        # Invalidate old device if token differs
         if existing and existing.get("device_token") != req.device_token:
-            # Option 1: overwrite and mark old as invalid
-            # Option 2: send push notification to old device to log out
-            logger.info(f"Invalidating old device for user {req.user_id}")
+            doc_ref.update({
+                "active": False,
+                "invalidated_at": datetime.utcnow().isoformat()
+            })
+            logger.info(f"Invalidated old device for user {req.user_id}")
 
-        # Save the new device as the only active one
+        # Save new device as active
         doc_ref.set({
             "university": req.university,
             "user_id": req.user_id,
@@ -571,9 +582,21 @@ async def register_device(
             "platform": req.platform,
             "registered_at": datetime.utcnow().isoformat(),
             "active": True,
-        })
+        }, merge=True)
 
-        return {"ok": True, "message": f"Device registered for {req.role}, old device invalidated"}
+        return {
+            "ok": True,
+            "message": f"Device registered for {req.role}",
+            "device": {
+                "user_id": req.user_id,
+                "device_token": req.device_token,
+                "platform": req.platform,
+                "university": req.university,
+                "role": req.role,
+            }
+        }
+
     except Exception as e:
         logger.exception("❌ Device registration error: %s", e)
         raise HTTPException(status_code=500, detail=f"Error registering device: {str(e)}")
+
