@@ -15,6 +15,8 @@ from dateutil.relativedelta import relativedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pydantic import BaseModel
 from botocore.exceptions import ClientError
+from CUZ.yearbook.profile.storage import s3_client, RAILWAY_BUCKET
+
 
 # FastAPI
 from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status, Query
