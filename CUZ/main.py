@@ -548,16 +548,19 @@ async def register_device(
     req: DeviceRegisterRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """
-    Register or update the active device for a user.
-    - Enforces one-device-per-account.
-    - Invalidates old device if token changes.
-    - Allows first-time registration even if no DEVICES doc exists yet.
-    """
+    logger.info(
+        "📱 Device register attempt → user_id=%s university=%s role=%s platform=%s",
+        req.user_id, req.university, req.role, req.platform
+    )
 
-    # Ownership check: enforce if JWT is present
+    # Ownership check
     if current_user:
-        if current_user.get("user_id") != req.user_id or current_user.get("university") != req.university:
+        logger.debug("Current user context: %s", current_user)
+        if (
+            current_user.get("user_id") != req.user_id
+            or current_user.get("university") != req.university
+        ):
+            logger.warning("Unauthorized device registration attempt")
             raise HTTPException(status_code=403, detail="Not authorized")
 
     try:
@@ -565,15 +568,17 @@ async def register_device(
         existing_doc = doc_ref.get()
         existing = existing_doc.to_dict() if existing_doc.exists else None
 
-        # Invalidate old device if token differs
+        logger.debug("Existing device record: %s", existing)
+
+        # Invalidate old device
         if existing and existing.get("device_token") != req.device_token:
             doc_ref.update({
                 "active": False,
                 "invalidated_at": datetime.utcnow().isoformat()
             })
-            logger.info(f"Invalidated old device for user {req.user_id}")
+            logger.info("🔄 Old device invalidated for user=%s", req.user_id)
 
-        # Save new device as active
+        # Save new device
         doc_ref.set({
             "university": req.university,
             "user_id": req.user_id,
@@ -584,21 +589,17 @@ async def register_device(
             "active": True,
         }, merge=True)
 
+        logger.info("✅ Device registered successfully for user=%s", req.user_id)
+
         return {
             "ok": True,
             "message": f"Device registered for {req.role}",
-            "device": {
-                "user_id": req.user_id,
-                "device_token": req.device_token,
-                "platform": req.platform,
-                "university": req.university,
-                "role": req.role,
-            }
         }
 
     except Exception as e:
-        logger.exception("❌ Device registration error: %s", e)
-        raise HTTPException(status_code=500, detail=f"Error registering device: {str(e)}")
+        logger.exception("❌ Device registration error")
+        raise HTTPException(status_code=500, detail="Error registering device")
+
 
 
 
@@ -610,21 +611,42 @@ class FCMRegistration(BaseModel):
     fcm_token: str
 
 @app.post("/users/register_fcm")
-async def register_fcm(req: FCMRegistration, current_user: dict = Depends(get_current_user)):
-    # Ownership check
-    if current_user.get("user_id") != req.student_id or current_user.get("university") != req.university:
+async def register_fcm(
+    req: FCMRegistration,
+    current_user: dict = Depends(get_current_user),
+):
+    logger.info(
+        "🔔 FCM registration attempt → student_id=%s university=%s",
+        req.student_id, req.university
+    )
+
+    if (
+        current_user.get("user_id") != req.student_id
+        or current_user.get("university") != req.university
+    ):
+        logger.warning("Unauthorized FCM registration")
         raise HTTPException(status_code=403, detail="Not authorized")
 
     try:
-        ref = db.collection("USERS").document(req.university).collection("students").document(req.student_id)
+        ref = (
+            db.collection("USERS")
+            .document(req.university)
+            .collection("students")
+            .document(req.student_id)
+        )
+
         ref.set({
             "fcm_token": req.fcm_token,
-            "updated_at": datetime.utcnow().isoformat()
+            "updated_at": datetime.utcnow().isoformat(),
         }, merge=True)
 
+        logger.info("✅ FCM token saved for user=%s", req.student_id)
+
         return {"ok": True, "message": "FCM token registered"}
-    except Exception as e:
-        logger.exception("❌ FCM registration error: %s", e)
-        raise HTTPException(status_code=500, detail=f"Error registering FCM token: {str(e)}")
+
+    except Exception:
+        logger.exception("❌ FCM registration error")
+        raise HTTPException(status_code=500, detail="Error registering FCM token")
+
 
 
