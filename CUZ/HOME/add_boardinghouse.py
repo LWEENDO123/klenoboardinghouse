@@ -9,6 +9,8 @@ from CUZ.USERS.security import get_current_admin, get_admin_or_landlord  # ✅ s
 import random
 import string
 from CUZ.yearbook.profile.compress import compress_to_720
+from CUZ.yearbook.profile.storage import s3_client, RAILWAY_BUCKET
+
 
 import uuid
 from fastapi import Path
