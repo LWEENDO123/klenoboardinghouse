@@ -1,23 +1,25 @@
 # file: CUZ/main.py
 
-from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status, Query
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import asyncio
+# Standard library
 import os
 import json
 import logging
+import asyncio
+import urllib.parse
 import hmac
 import hashlib
 from datetime import datetime
+
+# Third‑party
 from dateutil.relativedelta import relativedelta
-from apscheduler.schedulers.asyncio 
-import AsyncIOScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pydantic import BaseModel
-import urllib.parse import asyncio from fastapi.responses 
-import StreamingResponse 
-from botocore.exceptions 
-import ClientError
+from botocore.exceptions import ClientError
+
+# FastAPI
+from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse
 
 # ------------------------------
 # Routers and auth
