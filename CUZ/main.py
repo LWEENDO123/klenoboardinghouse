@@ -600,3 +600,31 @@ async def register_device(
         logger.exception("❌ Device registration error: %s", e)
         raise HTTPException(status_code=500, detail=f"Error registering device: {str(e)}")
 
+
+
+
+
+class FCMRegistration(BaseModel):
+    student_id: str
+    university: str
+    fcm_token: str
+
+@app.post("/users/register_fcm")
+async def register_fcm(req: FCMRegistration, current_user: dict = Depends(get_current_user)):
+    # Ownership check
+    if current_user.get("user_id") != req.student_id or current_user.get("university") != req.university:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    try:
+        ref = db.collection("USERS").document(req.university).collection("students").document(req.student_id)
+        ref.set({
+            "fcm_token": req.fcm_token,
+            "updated_at": datetime.utcnow().isoformat()
+        }, merge=True)
+
+        return {"ok": True, "message": "FCM token registered"}
+    except Exception as e:
+        logger.exception("❌ FCM registration error: %s", e)
+        raise HTTPException(status_code=500, detail=f"Error registering FCM token: {str(e)}")
+
+
