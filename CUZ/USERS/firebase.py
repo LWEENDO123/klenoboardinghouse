@@ -5,6 +5,8 @@ from fastapi import HTTPException
 from CUZ.core.firebase import db  # Shared Firestore client from core (no re-init)
   # Shared Firestore client from core (no re-init)
 
+from datetime import datetime, timedelta
+
 logger = logging.getLogger("app.firebase")
 logger.setLevel(logging.INFO)
 
@@ -133,6 +135,74 @@ async def user_exists(university: str, email: str, phone: str, first_name: str, 
     if list(landlord_query): return True
 
     return False
+
+
+
+
+async def update_user_password(email: str, hashed_pw: str, university: str = None):
+    """
+    Update a user's password in Firestore.
+    - For students: stored under USERS/{university}/students/{doc}
+    - For landlords/admin: adjust path accordingly
+    """
+    try:
+        if university:
+            # Students or union members
+            user_ref = db.collection("USERS").document(university).collection("students").where("email", "==", email).stream()
+        else:
+            # Landlords (example path)
+            user_ref = db.collection("USERS").document("ALL").collection("landlords").where("email", "==", email).stream()
+
+        docs = list(user_ref)
+        if not docs:
+            raise ValueError("User not found")
+
+        for doc in docs:
+            db.collection(doc.reference.parent.path).document(doc.id).update({"password": hashed_pw})
+
+        return True
+    except Exception as e:
+        raise RuntimeError(f"Error updating password: {e}")
+
+
+
+
+
+
+RESET_COLLECTION = "password_resets"
+
+async def save_reset_code(email: str, code: str, expires: datetime):
+    """
+    Save reset code with expiry in Firestore.
+    """
+    doc_ref = db.collection(RESET_COLLECTION).document(email)
+    doc_ref.set({
+        "code": code,
+        "expires": expires.isoformat()
+    }, merge=True)
+
+async def get_reset_code(email: str):
+    """
+    Retrieve reset code if not expired.
+    """
+    doc = db.collection(RESET_COLLECTION).document(email).get()
+    if not doc.exists:
+        return None
+    data = doc.to_dict()
+    expires = datetime.fromisoformat(data["expires"])
+    if datetime.utcnow() > expires:
+        # Expired
+        await clear_reset_code(email)
+        return None
+    return data["code"]
+
+async def clear_reset_code(email: str):
+    """
+    Remove reset code after use or expiry.
+    """
+    db.collection(RESET_COLLECTION).document(email).delete()
+
+
 
   
 
