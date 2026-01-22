@@ -3,11 +3,16 @@ from fastapi import (
     APIRouter, HTTPException, status, Depends,
     Request, Form, Header, Response,
 )
+import sib_api_v3_sdk
+from sib_api_v3_sdk.rest import ApiException
+import secrets # for generating secure random codes 
+from datetime import datetime, timedelta
 
 from jose import jwt, JWTError
 from datetime import timedelta
 from pydantic import EmailStr
 from fastapi.security import OAuth2PasswordRequestForm
+from .firebase import save_reset_code, get_reset_code, clear_reset_code
 
 # ✅ Project imports
 from CUZ.HOME.add_boardinghouse import CLUSTERS
@@ -642,3 +647,46 @@ async def ping():
     """
     return {"message": "pong", "status": "ok"}
 
+
+
+
+# Load Brevo API key and sender details from Railway env vars
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY")
+BREVO_SENDER_NAME = os.environ.get("BREVO_SENDER_NAME", "KLENO")
+BREVO_SENDER_EMAIL = os.environ.get("BREVO_SENDER_EMAIL", "support@yourdomain.com")
+
+configuration = sib_api_v3_sdk.Configuration()
+configuration.api_key['api-key'] = BREVO_API_KEY
+
+
+@router.post("/forgot_password")
+async def forgot_password(email: EmailStr):
+    reset_code = secrets.token_hex(3)  # 6‑digit hex code
+    await save_reset_code(email, reset_code, expires=datetime.utcnow() + timedelta(minutes=10))
+
+    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
+    send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+        to=[{"email": email}],
+        sender={"name": BREVO_SENDER_NAME, "email": BREVO_SENDER_EMAIL},
+        subject="Password Reset Code",
+        html_content=f"<p>Your password reset code is <b>{reset_code}</b></p>"
+    )
+
+    try:
+        api_instance.send_transac_email(send_smtp_email)
+        return {"detail": "Reset code sent"}
+    except ApiException as e:
+        raise HTTPException(status_code=500, detail=f"Email send failed: {e}")
+
+
+@router.post("/reset_password")
+async def reset_password(email: EmailStr, code: str, new_password: str):
+    stored_code = await get_reset_code(email)
+    if not stored_code or stored_code != code:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset code")
+
+    hashed_pw = get_password_hash(new_password)
+    await update_user_password(email, hashed_pw)
+    await clear_reset_code(email)
+
+    return {"detail": "Password updated successfully"}
