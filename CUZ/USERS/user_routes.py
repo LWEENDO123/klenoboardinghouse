@@ -691,12 +691,45 @@ async def forgot_password(email: EmailStr):
 
 @router.post("/reset_password")
 async def reset_password(email: EmailStr, code: str, new_password: str):
+    """
+    Reset password flow:
+    - validate reset code
+    - hash new password
+    - update user password in Firestore (students / landlords / union members)
+    - clear reset code
+    """
+    logger.info("reset_password: request for email=%s", email)
     stored_code = await get_reset_code(email)
     if not stored_code or stored_code != code:
+        logger.warning("reset_password: invalid or expired code for email=%s", email)
         raise HTTPException(status_code=400, detail="Invalid or expired reset code")
 
-    hashed_pw = get_password_hash(new_password)
-    await update_user_password(email, hashed_pw)
-    await clear_reset_code(email)
+    try:
+        hashed_pw = get_password_hash(new_password)
+    except Exception as e:
+        logger.exception("reset_password: error hashing password for email=%s: %s", email, e)
+        raise HTTPException(status_code=500, detail="Error processing password")
 
+    try:
+        # update_user_password is implemented in firebase.py and imported above
+        updated = await update_user_password(email, hashed_pw)
+        if not updated:
+            logger.warning("reset_password: update_user_password returned falsy for email=%s", email)
+            raise HTTPException(status_code=404, detail="User not found")
+    except HTTPException:
+        # re-raise HTTPExceptions so FastAPI returns the intended status
+        raise
+    except Exception as e:
+        # Log full exception server-side for debugging
+        logger.exception("reset_password: failed to update password for %s: %s", email, e)
+        raise HTTPException(status_code=500, detail="Error updating password")
+
+    try:
+        await clear_reset_code(email)
+    except Exception as e:
+        # Non-fatal: log but still return success to user
+        logger.exception("reset_password: failed to clear reset code for %s: %s", email, e)
+
+    logger.info("reset_password: password updated successfully for email=%s", email)
     return {"detail": "Password updated successfully"}
+
