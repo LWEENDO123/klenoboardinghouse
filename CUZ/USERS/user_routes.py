@@ -8,7 +8,7 @@ from sib_api_v3_sdk.rest import ApiException
 import secrets # for generating secure random codes 
 from datetime import datetime, timedelta
 import os
-from .firebase import save_reset_code, get_reset_code, clear_reset_code
+
 
 
 
@@ -16,7 +16,13 @@ from jose import jwt, JWTError
 from datetime import timedelta
 from pydantic import EmailStr
 from fastapi.security import OAuth2PasswordRequestForm
-from .firebase import save_reset_code, get_reset_code, clear_reset_code
+from .firebase import (
+    save_reset_code,
+    get_reset_code,
+    clear_reset_code,
+    update_user_password,   # <-- add this
+)
+
 
 # ✅ Project imports
 from CUZ.HOME.add_boardinghouse import CLUSTERS
