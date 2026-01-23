@@ -1,14 +1,16 @@
 # CUZ/available/check_boarding.py
+from typing import Optional, List
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import Optional
 
 from CUZ.USERS.firebase import db
 from CUZ.HOME.models import BoardingHouseHomepage
-from CUZ.core.security import get_premium_student
+from CUZ.core.security import get_current_user
 from CUZ.core.config import CLUSTERS
 
 router = APIRouter(prefix="/available", tags=["available"])
+
 
 @router.get("", response_model=dict)
 @router.get("/", response_model=dict)
@@ -18,8 +20,15 @@ async def get_available(
     student_id: str = Query(...),
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=50),
-    current_user: dict = Depends(get_premium_student),
+    filter: str = Query("all"),
+    current_user: dict = Depends(get_current_user),
 ):
+    """
+    Paginated "available" listing that mirrors the homepage summary behavior.
+    - Accepts university or region (region maps to CLUSTERS).
+    - Applies the same image/gender normalization and pagination logic as /home.
+    - Only returns boarding houses that have at least one available room/apartment.
+    """
     try:
         uni = university or current_user.get("university")
 
@@ -33,25 +42,32 @@ async def get_available(
         else:
             universities = [uni]
 
-        # Query Firestore
-        boardinghouses_ref = (
+        # Primary query: global BOARDINGHOUSES
+        boardinghouses_docs = (
             db.collection("BOARDINGHOUSES")
             .where("universities", "array_contains_any", universities)
             .get()
         )
 
-        # Fallback to scoped collection
-        if not boardinghouses_ref:
-            boardinghouses_ref = (
-                db.collection("HOME")
-                .document(uni)
-                .collection("boardinghouse")
-                .get()
+        # Fallback: scoped HOME/{uni}/boardinghouse (case-insensitive handling)
+        if not boardinghouses_docs:
+            boardinghouses_docs = (
+                db.collection("HOME").document(uni).collection("boardinghouse").get()
             )
 
-        available_data = []
-        for doc in boardinghouses_ref:
-            data = doc.to_dict()
+        houses: List[dict] = []
+        for doc in boardinghouses_docs or []:
+            data = doc.to_dict() or {}
+            data["id"] = doc.id
+
+            # Normalize created_at
+            ca = data.get("created_at")
+            if hasattr(ca, "to_datetime"):  # Firestore Timestamp
+                data["created_at"] = ca.to_datetime()
+            elif isinstance(ca, datetime):
+                data["created_at"] = ca
+            else:
+                data["created_at"] = datetime.utcnow()
 
             # Only include if any room/apartment is available
             availability_fields = [
@@ -62,7 +78,47 @@ async def get_available(
             if not any(data.get(field) == "available" for field in availability_fields):
                 continue
 
-            # Compute lowest price
+            houses.append(data)
+
+        # Apply filter (e.g., "new")
+        if filter and filter.lower() == "new":
+            houses.sort(key=lambda h: h.get("created_at", datetime.min), reverse=True)
+
+        # Pagination
+        total = len(houses)
+        start = (page - 1) * limit
+        end = min(start + limit, total)
+        paginated = houses[start:end]
+
+        available_data: List[BoardingHouseHomepage] = []
+        for data in paginated:
+            # Build images list from gallery/images
+            images_list: List[str] = []
+            if isinstance(data.get("gallery_images"), list):
+                images_list.extend([str(x) for x in data.get("gallery_images") if x])
+            if isinstance(data.get("images"), list):
+                images_list.extend([str(x) for x in data.get("images") if x])
+
+            # Legacy single image fields (try many fallbacks)
+            legacy_image = (
+                data.get("cover_image")
+                or data.get("coverImage")
+                or data.get("image")
+                or data.get("image_1")
+                or data.get("image_2")
+                or data.get("image_3")
+                or data.get("image_4")
+                or data.get("image_5")
+                or data.get("image_6")
+                or data.get("image_12")
+                or data.get("image_apartment")
+            )
+
+            cover = str(legacy_image) if legacy_image else (images_list[0] if images_list else None)
+            if not cover:
+                cover = "https://via.placeholder.com/400x200"
+
+            # Compute lowest price robustly
             def parse_price(val):
                 try:
                     if val is None:
@@ -70,7 +126,7 @@ async def get_available(
                     if isinstance(val, (int, float)):
                         return float(val)
                     return float(str(val).replace(",", "").replace("$", "").strip())
-                except:
+                except Exception:
                     return float("inf")
 
             prices = [
@@ -86,26 +142,6 @@ async def get_available(
             lowest_price = min([p for p in prices if p != float("inf")], default=float("inf"))
             price_str = str(int(lowest_price)) if lowest_price != float("inf") else "N/A"
 
-            # Pick best available image
-            image = (
-                data.get("image_12")
-                or data.get("image_6")
-                or data.get("image_5")
-                or data.get("image_4")
-                or data.get("image_3")
-                or data.get("image_2")
-                or data.get("image_1")
-                or data.get("image_apartment")
-            )
-
-            if not image:
-                gallery = data.get("images", [])
-                if isinstance(gallery, list) and gallery:
-                    image = gallery[0]
-
-            if not image:
-                image = "https://via.placeholder.com/400x200"
-
             # Resolve gender
             gender = (
                 "mixed" if data.get("gender_both")
@@ -116,32 +152,27 @@ async def get_available(
 
             available_data.append(
                 BoardingHouseHomepage(
-                    id=doc.id,
-                    name_boardinghouse=data.get("name", "Unnamed"),
+                    id=str(data.get("id", "")),
+                    name_boardinghouse=str(data.get("name", data.get("name_boardinghouse", "Unnamed"))),
                     price=price_str,
-                    image=image,
+                    image=cover,
                     gender=gender,
-                    location=data.get("location", ""),
-                    rating=data.get("rating"),
-                    type=data.get("type", "boardinghouse"),
-                    teaser_video=data.get("teaser_video") or data.get("video"),
+                    location=str(data.get("location", "") or ""),
+                    rating=(data.get("rating") if isinstance(data.get("rating"), (int, float)) else None),
+                    type=str(data.get("type", "boardinghouse")),
+                    teaser_video=str(data.get("teaser_video") or data.get("video") or "") if (data.get("teaser_video") or data.get("video")) else None,
                 )
             )
 
-        # Pagination
-        total = len(available_data)
-        start = (page - 1) * limit
-        end = min(start + limit, total)
-        paginated = available_data[start:end]
-
         return {
-            "data": paginated,
+            "data": [item.dict() for item in available_data],
             "total": total,
             "current_page": page,
             "total_pages": (total + limit - 1) // limit,
             "has_more": end < total,
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching available: {str(e)}")
-
