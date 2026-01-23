@@ -317,6 +317,7 @@ app.include_router(notification_router, dependencies=[Depends(get_current_user)]
 app.include_router(boardinghouse_router, dependencies=[Depends(get_current_user)])
 app.include_router(store_router, dependencies=[Depends(get_current_user)])
 app.include_router(proxily_router, dependencies=[Depends(get_current_user)])
+app.include_router(lenco_router, dependencies=[Depends(get_current_user)])
 
 
 # Ping endpoint
