@@ -7,6 +7,8 @@ import sib_api_v3_sdk
 from sib_api_v3_sdk.rest import ApiException
 import secrets # for generating secure random codes 
 from datetime import datetime, timedelta
+import os
+
 
 from jose import jwt, JWTError
 from datetime import timedelta
