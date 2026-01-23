@@ -27,6 +27,8 @@ apscheduler==3.10.4
 bleach==6.1.0
 email-validator==2.2.0
 filetype==1.2.0
+sib-api-v3-sdk
+
 
 # Image processing
 Pillow==11.0.0   # ✅ added for PIL.Image
