@@ -75,6 +75,10 @@ async def assign_boardinghouse(
             "gender_both": boardinghouse.gender_both,
             "GPS_coordinates": boardinghouse.GPS_coordinates or None,
             "yango_coordinates": boardinghouse.yango_coordinates or None,
+
+            # ✅ new fields
+            "cover_image": boardinghouse.cover_image or None,
+            "phone_number": boardinghouse.phone_number or None,
         })
 
         # Save under each university's HOME collection
@@ -102,7 +106,6 @@ async def assign_boardinghouse(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error assigning boarding house: {str(e)}")
-
 
 
 # ---------------------------
