@@ -560,7 +560,7 @@ async def refresh_tokens(
         logger.debug(f"Rotating refresh token for user_id={user_id}")
         new_refresh = rotate_refresh_token(jti, user_id, role, university, ip, user_agent)
 
-        logger.debug("Creating new access token (2 min expiry)")
+        logger.debug("Creating new access token (1 day expiry)")
         new_access = create_access_token(
             {
                 "sub": payload.get("sub_email") or payload.get("sub"),
@@ -569,7 +569,7 @@ async def refresh_tokens(
                 "user_id": user_id,
                 "university": university,
             },
-            expires_delta=timedelta(minutes=2)   # 🔹 shortened to 2 minutes
+            expires_delta=timedelta(days=1)   # 🔹 now 1 day expiry
         )
 
         logger.info(f"✅ Successfully refreshed tokens for user_id={user_id}")
@@ -580,7 +580,7 @@ async def refresh_tokens(
             "access_token": new_access,
             "refresh_token": new_refresh,
             "token_type": "bearer",
-            "expires_in": 2 * 60   # 🔹 2 minutes in seconds
+            "expires_in": 24 * 60 * 60   # 🔹 1 day in seconds
         }
 
     except JWTError:
@@ -589,7 +589,6 @@ async def refresh_tokens(
     except Exception as e:
         logger.exception("Unexpected error during token refresh")
         raise HTTPException(status_code=500, detail=f"Error refreshing token: {str(e)}")
-
 
 
 
