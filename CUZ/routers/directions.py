@@ -2,27 +2,9 @@
 from fastapi import APIRouter, Query
 from typing import Optional
 import math
+from .region_router import recalculate_origin, resolve_region_offset
 
 router = APIRouter(prefix="/directions", tags=["Directions"])
-
-# 🔹 Single regional anchor: Kalingalinga
-REGION_CENTERS = {
-    "kalingalinga": (-15.404706, 28.331178),
-}
-
-def haversine(lat1, lon1, lat2, lon2):
-    """Calculate distance in km between two coordinates."""
-    R = 6371
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(math.radians(lat1))
-        * math.cos(math.radians(lat2))
-        * math.sin(dlon / 2) ** 2
-    )
-    return R * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
-
 
 @router.get("/google")
 def get_google_directions(
@@ -34,25 +16,28 @@ def get_google_directions(
 ):
     """
     Generate a Google Maps direction link.
-    If 'region' is provided and matches 'kalingalinga',
-    the anchor is added as a waypoint so the route passes through it.
+    Regional anchor logic is applied internally (origin recalibration + destination drift correction),
+    but the returned link is always a clean origin → destination route.
     """
 
-    waypoints = ""
-    if region and region.lower() in REGION_CENTERS:
-        center_lat, center_lon = REGION_CENTERS[region.lower()]
-        waypoints = f"&waypoints={center_lat},{center_lon}"
-        print(f"Routing via region anchor: {region} ({center_lat}, {center_lon})")
+    # ✅ Apply origin recalibration (snap/fine‑tune relative to anchor if needed)
+    adj_origin_lat, adj_origin_lon = recalculate_origin(origin_lat, origin_lon, region)
 
+    # ✅ Apply destination drift correction
+    adj_dest_lat, adj_dest_lon = resolve_region_offset(region, dest_lat, dest_lon)
+
+    # ✅ Build clean Google Maps link (no visible waypoints)
     link = (
         f"https://www.google.com/maps/dir/?api=1"
-        f"&origin={origin_lat},{origin_lon}"
-        f"&destination={dest_lat},{dest_lon}"
-        f"{waypoints}"
+        f"&origin={adj_origin_lat},{adj_origin_lon}"
+        f"&destination={adj_dest_lat},{adj_dest_lon}"
         f"&travelmode=driving"
     )
+
     return {
-        "region": region or "none",
+        "region": region or "direct",
+        "origin": [adj_origin_lat, adj_origin_lon],
+        "destination": [adj_dest_lat, adj_dest_lon],
         "google_maps_url": link
     }
 
@@ -67,22 +52,27 @@ def get_yango_directions(
 ):
     """
     Generate a Yango Taxi deep link.
-    If 'region' is provided and matches 'kalingalinga',
-    the anchor is added as a middle-man reference.
+    Regional anchor logic is applied internally (origin recalibration + destination drift correction),
+    but the returned link is always a clean origin → destination route.
     """
 
-    if region and region.lower() in REGION_CENTERS:
-        center_lat, center_lon = REGION_CENTERS[region.lower()]
-        print(f"Routing via Yango region anchor: {region} ({center_lat}, {center_lon})")
-        # For Yango, we can’t add waypoints directly, but we can log/adjust if needed.
+    # ✅ Apply origin recalibration
+    adj_origin_lat, adj_origin_lon = recalculate_origin(origin_lat, origin_lon, region)
 
+    # ✅ Apply destination drift correction
+    adj_dest_lat, adj_dest_lon = resolve_region_offset(region, dest_lat, dest_lon)
+
+    # ✅ Build clean Yango deep link
     link = (
         f"yango://route?"
-        f"start-lat={origin_lat}&start-lon={origin_lon}"
-        f"&end-lat={dest_lat}&end-lon={dest_lon}"
+        f"start-lat={adj_origin_lat}&start-lon={adj_origin_lon}"
+        f"&end-lat={adj_dest_lat}&end-lon={adj_dest_lon}"
         f"&ref=proxy_location_app"
     )
+
     return {
-        "region": region or "none",
+        "region": region or "direct",
+        "origin": [adj_origin_lat, adj_origin_lon],
+        "destination": [adj_dest_lat, adj_dest_lon],
         "yango_url": link
     }
