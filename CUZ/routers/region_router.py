@@ -47,3 +47,34 @@ def recalculate_origin(
     offset_lon = center_lon + (origin_lon - center_lon) * 0.95
     print(f"[Recalc] Fine-tuned coordinates for {region}")
     return offset_lat, offset_lon
+
+
+def resolve_region_offset(
+    region: Optional[str],
+    dest_lat: float,
+    dest_lon: float,
+    correction_m: float = 8.0
+) -> Tuple[float, float]:
+    """
+    Applies a small directional offset (in meters) based on regional center
+    to correct visual drift on Google/Yango maps.
+    """
+    if not region or region.lower() not in REGION_CENTERS:
+        return dest_lat, dest_lon
+
+    center_lat, center_lon = REGION_CENTERS[region.lower()]
+
+    # Approx. meters per degree at this latitude
+    m_per_deg_lat = 111_320
+    m_per_deg_lon = 111_320 * math.cos(math.radians(center_lat))
+
+    # Calculate distance and direction vector
+    diff_lat = dest_lat - center_lat
+    diff_lon = dest_lon - center_lon
+
+    # Apply subtle correction (default 8 m depending on direction)
+    adj_lat = dest_lat + (correction_m / m_per_deg_lat) * (1 if diff_lat >= 0 else -1)
+    adj_lon = dest_lon + (correction_m / m_per_deg_lon) * (1 if diff_lon >= 0 else -1)
+
+    print(f"[Offset] Applied {correction_m}m drift correction for {region}")
+    return round(adj_lat, 6), round(adj_lon, 6)
