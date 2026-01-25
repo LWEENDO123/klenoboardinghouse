@@ -9,10 +9,17 @@ REGION_CENTERS = {
 
 # ✅ Boarding house coordinates under Kalingalinga region
 KALINGALINGA_REGION = {
-    # Example entries (replace with real boarding house coordinates you provide)
-    "boardinghouse_1": (-15.405429, 28.336177),
-    "boardinghouse_2": (-15.399682, 28.344279),
-    # Add more as you test and correct them
+    
+    "beza_accommodation": (-15.405442, 28.336161),
+    "petronela_boardinghouse": (-15.402681, 28.334535),
+    "chanowa_boardinghouse": (-15.402292, 28.337543),
+    "ms_phonebe_boardinghouse": (-15.408036, 28.338331),
+    "clempark_boardinghouse": (-15.409761, 28.325521),
+    "big_brother_accommodation": (-15.412493, 28.321370),
+    "mr_banda_kasoma_boardinghouse": (-15.412121, 28.319557),
+    "house_of_grace_boardinghouse": (-15.403709, 28.329916),
+    "georges_boardinghouse": (-15.403711, 28.332782),
+    "classy_boardinghouse": (-15.408111, 28.344221),
 }
 
 
