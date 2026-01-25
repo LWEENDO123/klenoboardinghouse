@@ -1,16 +1,13 @@
-#CUZ/routers/directions.py
-from fastapi import APIRouter, Query, HTTPException
+# CUZ/routers/directions.py
+from fastapi import APIRouter, Query
 from typing import Optional
 import math
 
 router = APIRouter(prefix="/directions", tags=["Directions"])
 
-# 🔹 Sample region centers (you’ll replace with real values later)
+# 🔹 Single regional anchor: Kalingalinga
 REGION_CENTERS = {
-    "lusaka": (-15.4167, 28.2833),
-    "chongwe": (-15.3292, 28.6820),
-    "matero": (-15.3885, 28.2478),
-    "kafue": (-15.7700, 28.1830),
+    "kalingalinga": (-15.404706, 28.331178),
 }
 
 def haversine(lat1, lon1, lat2, lon2):
@@ -37,14 +34,14 @@ def get_google_directions(
 ):
     """
     Generate a Google Maps direction link.
-    If 'region' is provided, the route is recalculated through the region's center.
+    If 'region' is provided and matches 'kalingalinga',
+    the origin is recalculated via the regional anchor if far away (>5km).
     """
 
     if region and region.lower() in REGION_CENTERS:
         center_lat, center_lon = REGION_CENTERS[region.lower()]
         distance_from_center = haversine(origin_lat, origin_lon, center_lat, center_lon)
 
-        # ✅ Recalculate origin via region center if far away (>5km)
         if distance_from_center > 5:
             print(f"Routing via region center: {region} ({center_lat}, {center_lon})")
             origin_lat, origin_lon = center_lat, center_lon
@@ -68,14 +65,14 @@ def get_yango_directions(
 ):
     """
     Generate a Yango Taxi deep link.
-    If 'region' is provided, use the region’s center as a middle-man for recalculation.
+    If 'region' is provided and matches 'kalingalinga',
+    the origin is recalculated via the regional anchor if far away (>5km).
     """
 
     if region and region.lower() in REGION_CENTERS:
         center_lat, center_lon = REGION_CENTERS[region.lower()]
         distance_from_center = haversine(origin_lat, origin_lon, center_lat, center_lon)
 
-        # ✅ Recalculate via regional middle-man
         if distance_from_center > 5:
             print(f"Routing via Yango region center: {region} ({center_lat}, {center_lon})")
             origin_lat, origin_lon = center_lat, center_lon
