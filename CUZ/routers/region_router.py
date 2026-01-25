@@ -2,10 +2,19 @@
 from typing import Optional, Tuple
 import math
 
-# ✅ Regional anchor (real data later)
+# ✅ Regional anchor (acts as subnet gateway)
 REGION_CENTERS = {
     "kalingalinga": (-15.404706, 28.331178),  # Cavendish Medical, UNZA, Chreso, UNILUS Main
 }
+
+# ✅ Boarding house coordinates under Kalingalinga region
+KALINGALINGA_REGION = {
+    # Example entries (replace with real boarding house coordinates you provide)
+    "boardinghouse_1": (-15.405429, 28.336177),
+    "boardinghouse_2": (-15.399682, 28.344279),
+    # Add more as you test and correct them
+}
+
 
 def haversine(lat1, lon1, lat2, lon2):
     """Distance in km between two coordinates."""
@@ -78,3 +87,16 @@ def resolve_region_offset(
 
     print(f"[Offset] Applied {correction_m}m drift correction for {region}")
     return round(adj_lat, 6), round(adj_lon, 6)
+
+
+def get_boardinghouse_coords(region: str, house_id: str) -> Tuple[float, float]:
+    """
+    Lookup boarding house coordinates by ID under a given region.
+    """
+    if region.lower() == "kalingalinga":
+        coords = KALINGALINGA_REGION.get(house_id)
+        if coords:
+            return coords
+        else:
+            raise ValueError(f"Boarding house {house_id} not found in {region} region")
+    raise ValueError(f"Region {region} not supported")
