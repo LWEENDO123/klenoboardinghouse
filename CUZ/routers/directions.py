@@ -35,24 +35,26 @@ def get_google_directions(
     """
     Generate a Google Maps direction link.
     If 'region' is provided and matches 'kalingalinga',
-    the origin is recalculated via the regional anchor if far away (>5km).
+    the anchor is added as a waypoint so the route passes through it.
     """
 
+    waypoints = ""
     if region and region.lower() in REGION_CENTERS:
         center_lat, center_lon = REGION_CENTERS[region.lower()]
-        distance_from_center = haversine(origin_lat, origin_lon, center_lat, center_lon)
-
-        if distance_from_center > 5:
-            print(f"Routing via region center: {region} ({center_lat}, {center_lon})")
-            origin_lat, origin_lon = center_lat, center_lon
+        waypoints = f"&waypoints={center_lat},{center_lon}"
+        print(f"Routing via region anchor: {region} ({center_lat}, {center_lon})")
 
     link = (
         f"https://www.google.com/maps/dir/?api=1"
         f"&origin={origin_lat},{origin_lon}"
         f"&destination={dest_lat},{dest_lon}"
+        f"{waypoints}"
         f"&travelmode=driving"
     )
-    return {"google_maps_url": link}
+    return {
+        "region": region or "none",
+        "google_maps_url": link
+    }
 
 
 @router.get("/yango")
@@ -66,16 +68,13 @@ def get_yango_directions(
     """
     Generate a Yango Taxi deep link.
     If 'region' is provided and matches 'kalingalinga',
-    the origin is recalculated via the regional anchor if far away (>5km).
+    the anchor is added as a middle-man reference.
     """
 
     if region and region.lower() in REGION_CENTERS:
         center_lat, center_lon = REGION_CENTERS[region.lower()]
-        distance_from_center = haversine(origin_lat, origin_lon, center_lat, center_lon)
-
-        if distance_from_center > 5:
-            print(f"Routing via Yango region center: {region} ({center_lat}, {center_lon})")
-            origin_lat, origin_lon = center_lat, center_lon
+        print(f"Routing via Yango region anchor: {region} ({center_lat}, {center_lon})")
+        # For Yango, we can’t add waypoints directly, but we can log/adjust if needed.
 
     link = (
         f"yango://route?"
@@ -83,4 +82,7 @@ def get_yango_directions(
         f"&end-lat={dest_lat}&end-lon={dest_lon}"
         f"&ref=proxy_location_app"
     )
-    return {"yango_url": link}
+    return {
+        "region": region or "none",
+        "yango_url": link
+    }
