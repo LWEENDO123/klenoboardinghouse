@@ -2,14 +2,14 @@
 from typing import Optional, Tuple
 import math
 
-# ✅ Regional anchor (acts as subnet gateway)
+# ✅ Regional anchors (act as subnet gateways)
 REGION_CENTERS = {
     "kalingalinga": (-15.404706, 28.331178),  # Cavendish Medical, UNZA, Chreso, UNILUS Main
+    "cuz": (-15.403314, 28.278487),           # Cavendish University Main Campus
 }
 
 # ✅ Boarding house coordinates under Kalingalinga region
 KALINGALINGA_REGION = {
-    
     "beza_accommodation": (-15.405442, 28.336161),
     "petronela_boardinghouse": (-15.402681, 28.334535),
     "chanowa_boardinghouse": (-15.402292, 28.337543),
@@ -22,12 +22,19 @@ KALINGALINGA_REGION = {
     "classy_boardinghouse": (-15.408111, 28.344221),
 }
 
+# ✅ Boarding house coordinates under CUZ region
+CUZ_AREA = {
+    # Add CUZ boarding houses here as you map them
+    # Example:
+    # "sample_boardinghouse": (-15.40xxxx, 28.27xxxx),
+}
+
 
 def haversine(lat1, lon1, lat2, lon2):
     """Distance in km between two coordinates."""
     R = 6371
     dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
+    dlon = math.radians(lat2 - lon1)
     a = (
         math.sin(dlat / 2) ** 2
         + math.cos(math.radians(lat1))
@@ -100,10 +107,18 @@ def get_boardinghouse_coords(region: str, house_id: str) -> Tuple[float, float]:
     """
     Lookup boarding house coordinates by ID under a given region.
     """
-    if region.lower() == "kalingalinga":
+    region = region.lower()
+    if region == "kalingalinga":
         coords = KALINGALINGA_REGION.get(house_id)
         if coords:
             return coords
         else:
             raise ValueError(f"Boarding house {house_id} not found in {region} region")
-    raise ValueError(f"Region {region} not supported")
+    elif region == "cuz":
+        coords = CUZ_AREA.get(house_id)
+        if coords:
+            return coords
+        else:
+            raise ValueError(f"Boarding house {house_id} not found in {region} region")
+    else:
+        raise ValueError(f"Region {region} not supported")
