@@ -24,9 +24,9 @@ KALINGALINGA_REGION = {
 
 # ✅ Boarding house coordinates under CUZ region
 CUZ_AREA = {
-    # Add CUZ boarding houses here as you map them
-    # Example:
-    # "sample_boardinghouse": (-15.40xxxx, 28.27xxxx),
+    "Mr solomon": (-15.405278, 28.283278),
+    "mr_tembo_boardinghouse": (-15.386688, 28.284536),
+    "mr_tembo_second_boardinghouse": (-15.386915, 28.284082),
 }
 
 
