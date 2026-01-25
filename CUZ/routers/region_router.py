@@ -2,12 +2,9 @@
 from typing import Optional, Tuple
 import math
 
-# ✅ Region hubs (real data later)
+# ✅ Regional anchor (real data later)
 REGION_CENTERS = {
-    "lusaka": (-15.4167, 28.2833),
-    "chongwe": (-15.3292, 28.6820),
-    "matero": (-15.3885, 28.2478),
-    "kafue": (-15.7700, 28.1830),
+    "kalingalinga": (-15.404706, 28.331178),  # Cavendish Medical, UNZA, Chreso, UNILUS Main
 }
 
 def haversine(lat1, lon1, lat2, lon2):
