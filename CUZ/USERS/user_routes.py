@@ -382,7 +382,7 @@ async def login(
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         # ---------------------------
-        # Issue JWT access token (2 min expiry)
+        # Issue JWT access token (1 day expiry)
         # ---------------------------
         access_token = create_access_token(
             data={
@@ -392,9 +392,9 @@ async def login(
                 "user_id": user_data["user_id"],
                 "university": user_data.get("university"),
             },
-            expires_delta=timedelta(minutes=2),   # 🔹 shortened to 2 minutes
+            expires_delta=timedelta(days=1),   # 🔹 now 1 day expiry
         )
-        logger.debug(f"Issued access token for user_id={user_data['user_id']} with 2 min expiry")
+        logger.debug(f"Issued access token for user_id={user_data['user_id']} with 1 day expiry")
 
         # ---------------------------
         # Issue refresh token
@@ -421,7 +421,7 @@ async def login(
             "role": user_data["role"],
             "user_id": user_data["user_id"],
             "university": user_data.get("university"),
-            "expires_in": 2 * 60   # 🔹 2 minutes in seconds
+            "expires_in": 24 * 60 * 60   # 🔹 1 day in seconds
         }
 
     except HTTPException:
