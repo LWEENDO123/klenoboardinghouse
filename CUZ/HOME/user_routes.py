@@ -9,6 +9,8 @@ from CUZ.core.config import CLUSTERS
 from CUZ.utils.token_utils import generate_location_token, decode_location_token
 from CUZ.USERS.security import get_admin_or_landlord
  # landlord/admin auth
+from CUZ.routers.region_router import get_boardinghouse_coords, resolve_region_offset
+
 
 
 router = APIRouter(prefix="/home", tags=["HOME"])
@@ -307,85 +309,51 @@ async def get_yango_links(
 ):
     validate_student_identity(university, student_id)
 
-    # --------------------------------------------------
-    # Fetch boarding house
-    # --------------------------------------------------
-    doc = db.collection("BOARDINGHOUSES").document(id).get()
-    if not doc.exists:
-        doc = (
-            db.collection("HOME")
-            .document(university)
-            .collection("boardinghouse")
-            .document(id)
-            .get()
-        )
+    # 🔹 Try region-based lookup first
+    dest_lat, dest_lon = None, None
+    if region:
+        try:
+            dest_lat, dest_lon = get_boardinghouse_coords(region, id)
+        except Exception:
+            pass
 
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="Boarding house not found")
+    # 🔹 Fallback to Firestore
+    if not dest_lat or not dest_lon:
+        doc = db.collection("BOARDINGHOUSES").document(id).get()
+        if not doc.exists:
+            doc = db.collection("HOME").document(university).collection("boardinghouse").document(id).get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Boarding house not found")
 
-    data = doc.to_dict()
+        data = doc.to_dict()
+        coords = data.get("yango_coordinates") or data.get("GPS_coordinates")
+        if not coords or len(coords) != 2:
+            raise HTTPException(status_code=400, detail="Yango coordinates missing")
+        dest_lat, dest_lon = coords
 
-    coords = data.get("yango_coordinates") or data.get("GPS_coordinates")
-    if not coords or len(coords) != 2:
-        raise HTTPException(status_code=400, detail="Yango coordinates missing")
-
-    dest_lat, dest_lon = coords
+    # ✅ Apply drift correction
     dest_lat, dest_lon = resolve_region_offset(region, dest_lat, dest_lon)
 
-    # --------------------------------------------------
-    # Secure redirect support (optional)
-    # --------------------------------------------------
-    if secure:
-        token = create_location_token(
-            current_lat, current_lon, dest_lat, dest_lon
-        )
-        return {
-            "secure_link": f"https://yourdomain.com/yango/redirect/{token}",
-            "service": "yango",
-        }
-
-    # --------------------------------------------------
-    # 1️⃣ Primary browser link (Android-safe, HTTPS)
-    # --------------------------------------------------
+    # Build links
     browser_link = (
         "https://yango.com/en_int/order/"
-        f"?gfrom={current_lat},{current_lon}"
-        f"&gto={dest_lat},{dest_lon}"
+        f"?gfrom={current_lat},{current_lon}&gto={dest_lat},{dest_lon}"
         f"&tariff={tariff}&lang={lang}"
     )
-
-    # --------------------------------------------------
-    # 2️⃣ Optional legacy link (kept for fallback/debug)
-    # --------------------------------------------------
-    legacy_browser_link = (
-        "https://yango.com/en_int/order/?from=order_PE"
-        f"&gfrom={current_lat},{current_lon}"
-        f"&gto={dest_lat},{dest_lon}"
-        f"&tariff={tariff}&lang={lang}"
-    )
-
-    # --------------------------------------------------
-    # 3️⃣ Deep link (ONLY if app installed)
-    # --------------------------------------------------
     deep_link = (
-        "yango://route?"
-        f"start-lat={current_lat}&start-lon={current_lon}"
+        f"yango://route?start-lat={current_lat}&start-lon={current_lon}"
         f"&end-lat={dest_lat}&end-lon={dest_lon}"
     )
 
-    # --------------------------------------------------
-    # Response
-    # --------------------------------------------------
     return {
-        "browser_link": browser_link,              # ✅ use this in WebView
-        "legacy_browser_link": legacy_browser_link,  # ⚠️ optional fallback
-        "deep_link": deep_link,                   # ⚠️ app-installed only
+        "browser_link": browser_link,
+        "deep_link": deep_link,
         "pickup": [current_lat, current_lon],
         "dropoff": [dest_lat, dest_lon],
         "region": region or "direct",
-        "android_safe": True,
         "service": "yango",
     }
+
 
 
 
@@ -405,37 +373,34 @@ async def get_google_directions(
 ):
     validate_student_identity(university, student_id)
 
-    ref = db.collection("BOARDINGHOUSES").document(id).get()
-    if not ref.exists:
-        ref = (
-            db.collection("HOME")
-            .document(university)
-            .collection("boardinghouse")
-            .document(id)
-            .get()
-        )
-    if not ref.exists:
-        raise HTTPException(status_code=404, detail="Boarding house not found")
+    # 🔹 Try region-based lookup first
+    dest_lat, dest_lon = None, None
+    if region:
+        try:
+            dest_lat, dest_lon = get_boardinghouse_coords(region, id)
+        except Exception:
+            pass
 
-    data = ref.to_dict()
-    coords = data.get("GPS_coordinates")
-    if not coords or len(coords) != 2:
-        raise HTTPException(status_code=400, detail="Google coordinates not available")
+    # 🔹 Fallback to Firestore GPS coordinates
+    if not dest_lat or not dest_lon:
+        ref = db.collection("BOARDINGHOUSES").document(id).get()
+        if not ref.exists:
+            ref = db.collection("HOME").document(university).collection("boardinghouse").document(id).get()
+        if not ref.exists:
+            raise HTTPException(status_code=404, detail="Boarding house not found")
 
-    dest_lat, dest_lon = coords
+        data = ref.to_dict()
+        coords = data.get("GPS_coordinates")
+        if not coords or len(coords) != 2:
+            raise HTTPException(status_code=400, detail="Google coordinates not available")
+        dest_lat, dest_lon = coords
+
+    # ✅ Apply regional drift correction
     dest_lat, dest_lon = resolve_region_offset(region, dest_lat, dest_lon)
 
-    # Optional secure link
-    if secure:
-        token = create_location_token(current_lat, current_lon, dest_lat, dest_lon)
-        return {"secure_link": f"https://yourdomain.com/google/redirect/{token}", "service": "google"}
-
-    # Normal direction link
+    # Build link
     if current_lat is not None and current_lon is not None:
-        link = (
-            f"https://www.google.com/maps/dir/?api=1"
-            f"&origin={current_lat},{current_lon}&destination={dest_lat},{dest_lon}"
-        )
+        link = f"https://www.google.com/maps/dir/?api=1&origin={current_lat},{current_lon}&destination={dest_lat},{dest_lon}"
     else:
         link = f"https://www.google.com/maps/dir/?api=1&destination={dest_lat},{dest_lon}"
 
@@ -444,8 +409,9 @@ async def get_google_directions(
         "region": region or "direct",
         "service": "google",
     }
-
 # --------------------------------------------------
+
+
 # 🔐 Redirect Endpoints (Unchanged)
 @router.get("/yango/redirect/{token}")
 async def redirect_to_yango(token: str):
