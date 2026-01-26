@@ -104,6 +104,12 @@ class BoardingHouse(BaseModel):
     universities: List[str]
     landlord_id: str
 
+    # Optional contact phone number
+    phone_number: Optional[str] = Field(
+        default=None,
+        description="Contact phone number for the boarding house"
+    )
+
     # Prices
     price_12: Optional[str] = None
     price_6: Optional[str] = None
@@ -185,3 +191,4 @@ class BoardingHouse(BaseModel):
 
     class Config:
         extra = "forbid"
+
