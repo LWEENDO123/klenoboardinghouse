@@ -33,6 +33,14 @@ def validate_student_identity(university: str, student_id: str):
 # ---------------------------
 # GET /home - Paginated homepage summary (scroll-ready)
 # ---------------------------
+import logging
+from fastapi import APIRouter, Query, Depends, HTTPException
+from datetime import datetime
+from typing import Optional, List
+
+logger = logging.getLogger(__name__)
+
+
 @router.get("/", response_model=dict)
 async def get_home(
     university: Optional[str] = None,
@@ -45,7 +53,10 @@ async def get_home(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        # Resolve effective university
+        # Basic context logging
+        logger.debug("get_home called: scope=%s university=%s region=%s student_id=%s page=%d limit=%d filter=%s",
+                     scope, university, region, student_id, page, limit, filter)
+
         user_uni = current_user.get("university")
         effective_uni = university or user_uni
 
@@ -56,53 +67,71 @@ async def get_home(
             except HTTPException:
                 raise
             except Exception as e:
-                logger.exception("validate_student_identity raised unexpected error")
+                logger.exception("validate_student_identity unexpected error")
                 raise HTTPException(status_code=400, detail="Invalid student/university combination")
 
-        # Build boardinghouses_docs depending on scope
+        # Build the query result variable
         boardinghouses_docs = []
 
+        # Helper to safely run array_contains_any
+        def safe_array_contains_any(collection_ref, field, values):
+            if not values:
+                logger.debug("safe_array_contains_any: empty values, skipping where()")
+                return collection_ref.get()
+            if len(values) > 10:
+                logger.warning("safe_array_contains_any: truncating values to 10 items")
+                values = values[:10]
+            return collection_ref.where(field, "array_contains_any", values).get()
+
+        # Choose query path based on scope
         if scope == "global":
-            # If a specific university was provided, restrict to it; otherwise query all
             if university:
                 universities = [university]
+                logger.debug("global scope with specific university: %s", universities)
+                try:
+                    boardinghouses_docs = safe_array_contains_any(db.collection("BOARDINGHOUSES"), "universities", universities)
+                except Exception:
+                    logger.exception("Firestore global query failed")
+                    raise HTTPException(status_code=500, detail="Error querying global boardinghouses")
             else:
-                # If you want truly global, you may query without array_contains_any,
-                # or use a safe sentinel list if your DB supports it.
-                universities = None
-
-            if universities:
-                # safe: only call array_contains_any when list is non-empty
-                boardinghouses_docs = db.collection("BOARDINGHOUSES") \
-                    .where("universities", "array_contains_any", universities).get()
-            else:
-                # fallback: fetch all documents (careful with large collections)
-                boardinghouses_docs = db.collection("BOARDINGHOUSES").get()
-
+                logger.debug("global scope without specific university: fetching all BOARDINGHOUSES (careful with size)")
+                try:
+                    boardinghouses_docs = db.collection("BOARDINGHOUSES").get()
+                except Exception:
+                    logger.exception("Firestore fetch all BOARDINGHOUSES failed")
+                    raise HTTPException(status_code=500, detail="Error querying global boardinghouses")
         elif scope == "scoped":
             if not effective_uni:
                 raise HTTPException(status_code=400, detail="University required for scoped search")
-            boardinghouses_docs = db.collection("HOME").document(effective_uni).collection("BOARDHOUSE").get()
-
+            try:
+                boardinghouses_docs = db.collection("HOME").document(effective_uni).collection("BOARDHOUSE").get()
+            except Exception:
+                logger.exception("Firestore scoped query failed for uni=%s", effective_uni)
+                raise HTTPException(status_code=500, detail="Error querying scoped boardinghouses")
         elif scope == "region":
             if not region or region not in REGIONS:
                 raise HTTPException(status_code=400, detail="Invalid or missing region")
             universities = REGIONS[region]
-            if not universities:
-                boardinghouses_docs = []
-            else:
-                boardinghouses_docs = db.collection("BOARDINGHOUSES") \
-                    .where("universities", "array_contains_any", universities).get()
-
+            logger.debug("region scope universities=%s", universities)
+            try:
+                boardinghouses_docs = safe_array_contains_any(db.collection("BOARDINGHOUSES"), "universities", universities)
+            except Exception:
+                logger.exception("Firestore region query failed for region=%s", region)
+                raise HTTPException(status_code=500, detail="Error querying region boardinghouses")
         else:  # default
             if effective_uni:
                 universities = [effective_uni]
-                boardinghouses_docs = db.collection("BOARDINGHOUSES") \
-                    .where("universities", "array_contains_any", universities).get()
-                if not boardinghouses_docs:
-                    boardinghouses_docs = db.collection("HOME").document(effective_uni).collection("BOARDHOUSE").get()
+                logger.debug("default scope using effective_uni=%s", effective_uni)
+                try:
+                    boardinghouses_docs = safe_array_contains_any(db.collection("BOARDINGHOUSES"), "universities", universities)
+                    # fallback to scoped if global returned no docs
+                    if not boardinghouses_docs:
+                        boardinghouses_docs = db.collection("HOME").document(effective_uni).collection("BOARDHOUSE").get()
+                except Exception:
+                    logger.exception("Firestore default query failed for uni=%s", effective_uni)
+                    raise HTTPException(status_code=500, detail="Error querying boardinghouses")
             else:
-                # No university context: return empty result set
+                logger.debug("default scope with no university context: returning empty set")
                 boardinghouses_docs = []
 
         # Normalize docs safely
@@ -140,7 +169,7 @@ async def get_home(
         end = min(start + limit, total)
         paginated = houses[start:end]
 
-        # Build response
+        # Build response items (same as before)
         homepage_data = []
         for data in paginated:
             images_list = []
@@ -204,8 +233,6 @@ async def get_home(
     except Exception as e:
         logger.exception("Unhandled error in get_home")
         raise HTTPException(status_code=500, detail=f"Error fetching homepage data: {str(e)}")
-
-
 
 # ---------------------------
 # GET /home/boardinghouse/{id}
