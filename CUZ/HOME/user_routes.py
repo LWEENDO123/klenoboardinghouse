@@ -25,30 +25,50 @@ REGIONS = {
 
 # ---------------------------
 # Helper: Validate student identity
-# ---------------------------
-def validate_student_identity(university: str, student_id: str):
+def validate_student_identity(university: str, student_id: str, requester_uni: Optional[str] = None, allow_cross_university: bool = False) -> bool:
     """
     Ensure the student exists in USERS/{university}/students/{student_id}.
-    Acts like a campus ID check.
+
+    Parameters
+    - university: the target university to check (e.g., selected from dropdown)
+    - student_id: the student's id to validate
+    - requester_uni: the authenticated user's university (used when allow_cross_university=True)
+    - allow_cross_university: if True, validate the student_id against requester_uni instead of `university`
+
+    Behavior
+    - If allow_cross_university is False (default), validate student_id under `university`.
+    - If allow_cross_university is True, validate student_id under `requester_uni`. If requester_uni is None, raises 400.
     """
+    # Decide which university to validate against
+    target_uni = university
+    if allow_cross_university:
+        if not requester_uni:
+            logger.error("allow_cross_university=True but requester_uni is missing")
+            raise HTTPException(status_code=400, detail="Requester university required for cross-university validation")
+        target_uni = requester_uni
+
+    if not target_uni:
+        logger.error("validate_student_identity called with empty university (student_id=%s)", student_id)
+        raise HTTPException(status_code=400, detail="University is required")
+
+    logger.debug("Validating student identity student_id=%s against university=%s (allow_cross=%s requester_uni=%s)",
+                 student_id, target_uni, allow_cross_university, requester_uni)
+
     try:
-        user_ref = db.collection("USERS").document(university).collection("students").document(student_id)
+        user_ref = db.collection("USERS").document(target_uni).collection("students").document(student_id)
         snap = user_ref.get()
     except Exception:
-        logger.exception("Firestore error checking student identity uni=%s student_id=%s", university, student_id)
+        logger.exception("Firestore error checking student identity uni=%s student_id=%s", target_uni, student_id)
         raise HTTPException(status_code=500, detail="Error validating student identity")
 
     if not snap.exists:
+        logger.debug("Student not found: USERS/%s/students/%s", target_uni, student_id)
         raise HTTPException(status_code=403, detail="Invalid student identity")
+
+    logger.debug("Student validated: USERS/%s/students/%s exists", target_uni, student_id)
     return True
 
 
-# Replace or add these handlers in CUZ/HOME/user_routes.py
-from fastapi import APIRouter, Query, Depends, HTTPException
-from typing import Optional
-from datetime import datetime
-
-router = APIRouter(prefix="/home", tags=["HOME"])
 
 # Replace the existing handlers with this code in CUZ/HOME/user_routes.py
 
