@@ -47,187 +47,159 @@ def validate_student_identity(university: str, student_id: str):
 # GET /home - single robust implementation (scope param supported)
 # ---------------------------
 # --- Replace existing get_home with this function ---
+@router.get("", response_model=dict)
 @router.get("/", response_model=dict)
 async def get_home(
     university: Optional[str] = None,
     region: Optional[str] = None,
-    scope: str = Query("default", regex="^(default|global|scoped|region)$"),
     student_id: str = Query(...),
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=50),
     filter: str = Query("all"),
     current_user: dict = Depends(get_current_user),
 ):
-    logger.debug(
-        "get_home called scope=%s university=%s region=%s student_id=%s page=%d limit=%d filter=%s",
-        scope, university, region, student_id, page, limit, filter
-    )
-
-    user_uni = current_user.get("university")
-    effective_uni = university or user_uni
-
-    # Validate student identity if we have an effective university
-    if effective_uni:
-        try:
-            validate_student_identity(effective_uni, student_id)
-        except HTTPException:
-            raise
-        except Exception:
-            logger.exception("validate_student_identity unexpected error for uni=%s student_id=%s", effective_uni, student_id)
-            raise HTTPException(status_code=500, detail="Error validating student identity")
-
-    # Helper to safely call array_contains_any
-    def safe_array_contains_any(collection_ref, field, values):
-        # Defensive: don't call array_contains_any with empty list
-        if not values:
-            logger.debug("safe_array_contains_any: empty values -> returning [] to avoid invalid query")
-            return []
-        # Firestore limit: array_contains_any accepts up to 10 values
-        if len(values) > 10:
-            logger.warning("safe_array_contains_any: values length > 10 -> rejecting request")
-            raise HTTPException(status_code=400, detail="Too many values for array_contains_any; reduce to 10 or fewer")
-        logger.debug("safe_array_contains_any: calling where with %d values", len(values))
-        try:
-            docs = collection_ref.where(field, "array_contains_any", values).get()
-            logger.debug("safe_array_contains_any: returned %d docs", len(docs) if docs is not None else 0)
-            return docs or []
-        except Exception:
-            logger.exception("Firestore array_contains_any failed for field=%s values=%s", field, values)
-            raise HTTPException(status_code=500, detail="Error querying boardinghouses")
-
-    # Execute the chosen query path
     try:
-        logger.debug("Preparing Firestore query for scope=%s effective_uni=%s region=%s", scope, effective_uni, region)
-        if scope == "global":
-            if university:
-                logger.debug("global scope with university=%s", university)
-                boardinghouses_docs = safe_array_contains_any(db.collection("BOARDINGHOUSES"), "universities", [university])
-            else:
-                logger.debug("global scope without university: fetching limited BOARDINGHOUSES (limit=100)")
-                boardinghouses_docs = db.collection("BOARDINGHOUSES").limit(100).get()
-        elif scope == "scoped":
-            if not effective_uni:
-                raise HTTPException(status_code=400, detail="University required for scoped search")
-            logger.debug("scoped scope using effective_uni=%s", effective_uni)
-            boardinghouses_docs = db.collection("HOME").document(effective_uni).collection("BOARDHOUSE").get()
-        elif scope == "region":
-            if not region or region not in REGIONS:
-                raise HTTPException(status_code=400, detail="Invalid or missing region")
+        uni = university or current_user.get("university")
+        validate_student_identity(uni, student_id)
+
+        # Determine universities
+        if region:
+            if region not in REGIONS:
+                raise HTTPException(status_code=400, detail="Invalid region")
             universities = REGIONS[region]
-            logger.debug("region scope universities=%s", universities)
-            boardinghouses_docs = safe_array_contains_any(db.collection("BOARDINGHOUSES"), "universities", universities)
-        else:  # default
-            if effective_uni:
-                logger.debug("default scope using effective_uni=%s", effective_uni)
-                boardinghouses_docs = safe_array_contains_any(db.collection("BOARDINGHOUSES"), "universities", [effective_uni])
-                if not boardinghouses_docs:
-                    logger.debug("default scope fallback to HOME/%s/BOARDHOUSE", effective_uni)
-                    boardinghouses_docs = db.collection("HOME").document(effective_uni).collection("BOARDHOUSE").get()
-            else:
-                logger.debug("default scope with no university context: returning empty set")
-                boardinghouses_docs = []
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Unhandled Firestore error in get_home scope=%s uni=%s region=%s", scope, effective_uni, region)
-        raise HTTPException(status_code=500, detail="Error fetching boardinghouses")
+        elif university:
+            universities = [university]
+        else:
+            universities = [uni]
 
-    # Debug: log how many docs we got
-    try:
-        count_docs = len(boardinghouses_docs) if boardinghouses_docs is not None else 0
-        logger.debug("Firestore query returned %d docs", count_docs)
-    except Exception:
-        logger.debug("Could not determine docs count (non-iterable result)")
+        # Query Firestore (guard against empty universities list)
+        boardinghouses_ref = []
+        if universities:
+            # Firestore array_contains_any accepts up to 10 values; avoid empty lists
+            if len(universities) > 10:
+                raise HTTPException(status_code=400, detail="Too many universities in query; reduce to 10 or fewer")
+            boardinghouses_ref = (
+                db.collection("BOARDINGHOUSES")
+                .where("universities", "array_contains_any", universities)
+                .get()
+            )
 
-    # Normalize documents defensively
-    houses = []
-    for doc in boardinghouses_docs or []:
-        try:
-            raw = doc.to_dict() or {}
-        except Exception:
-            logger.exception("Failed to parse Firestore doc id=%s", getattr(doc, "id", "<unknown>"))
-            continue
+        # Fallback: scoped HOME/{uni}/BOARDHOUSE
+        if not boardinghouses_ref:
+            boardinghouses_ref = (
+                db.collection("HOME").document(uni).collection("boardinghouse").get()
+            )
 
-        doc_id = getattr(doc, "id", raw.get("id", ""))
-        ca = raw.get("created_at")
-        try:
-            if hasattr(ca, "to_datetime"):
-                created_at = ca.to_datetime()
-            elif isinstance(ca, datetime):
-                created_at = ca
-            else:
-                created_at = datetime.utcnow()
-        except Exception:
-            logger.exception("created_at normalization failed for doc id=%s", doc_id)
-            created_at = datetime.utcnow()
+        # Build houses list safely
+        houses = []
+        for doc in boardinghouses_ref or []:
+            try:
+                d = doc.to_dict() or {}
+            except Exception:
+                # skip malformed doc but continue processing others
+                logger.exception("Failed to parse boardinghouse doc id=%s", getattr(doc, "id", "<unknown>"))
+                continue
+            d["id"] = getattr(doc, "id", d.get("id", ""))
+            houses.append(d)
 
-        # Build a safe normalized dict
-        safe = {
-            "id": str(doc_id),
-            "name": raw.get("name") or raw.get("name_boardinghouse") or "Unnamed",
-            "cover_image": raw.get("cover_image") or raw.get("image") or None,
-            "gallery_images": list(raw.get("gallery_images") or raw.get("images") or []),
-            "location": raw.get("location") or "",
-            "rating": raw.get("rating") if isinstance(raw.get("rating"), (int, float)) else None,
-            "type": raw.get("type") or "boardinghouse",
-            "created_at": created_at,
-            "gender_male": bool(raw.get("gender_male")),
-            "gender_female": bool(raw.get("gender_female")),
-            "gender_both": bool(raw.get("gender_both")),
-            "teaser_video": raw.get("teaser_video") or raw.get("video") or None,
+        # Apply filter
+        if filter.lower() == "new":
+            # normalize created_at safely for sorting
+            def _created_at_val(h):
+                ca = h.get("created_at")
+                try:
+                    if hasattr(ca, "to_datetime"):
+                        return ca.to_datetime()
+                    if isinstance(ca, datetime):
+                        return ca
+                except Exception:
+                    logger.debug("created_at normalization failed for id=%s", h.get("id"))
+                return datetime.min
+            houses.sort(key=_created_at_val, reverse=True)
+
+        # Pagination
+        total = len(houses)
+        start = (page - 1) * limit
+        end = min(start + limit, total)
+        paginated = houses[start:end]
+
+        homepage_data = []
+        for data in paginated:
+            # Compute lowest available price (defensive)
+            def _to_float(v):
+                try:
+                    return float(v)
+                except Exception:
+                    return float("inf")
+
+            prices = [
+                _to_float(data.get("price_12", float("inf"))),
+                _to_float(data.get("price_6", float("inf"))),
+                _to_float(data.get("price_5", float("inf"))),
+                _to_float(data.get("price_4", float("inf"))),
+                _to_float(data.get("price_3", float("inf"))),
+                _to_float(data.get("price_2", float("inf"))),
+                _to_float(data.get("price_1", float("inf"))),
+                _to_float(data.get("price_apartment", float("inf"))),
+            ]
+            lowest_price = min([p for p in prices if p != float("inf")], default=float("inf"))
+            price_str = str(int(lowest_price)) if lowest_price != float("inf") else "N/A"
+
+            # Pick best available image (legacy fields + gallery)
+            image = (
+                data.get("image_12")
+                or data.get("image_6")
+                or data.get("image_5")
+                or data.get("image_4")
+                or data.get("image_3")
+                or data.get("image_2")
+                or data.get("image_1")
+                or data.get("image_apartment")
+                or (data.get("images") and data.get("images")[0])
+                or "https://via.placeholder.com/400x200"
+            )
+
+            gender = (
+                "mixed" if data.get("gender_both")
+                else "male" if data.get("gender_male")
+                else "female" if data.get("gender_female")
+                else "both"
+            )
+
+            # Build homepage item (keep fields consistent with your Pydantic model)
+            # If your BoardingHouseHomepage includes 'price', include it; otherwise omit.
+            item_kwargs = {
+                "id": data.get("id"),
+                "name_boardinghouse": data.get("name", "Unnamed"),
+                "image": image,
+                "cover_image": data.get("cover_image") or image,
+                "gender": gender,
+                "location": data.get("location", ""),
+                "rating": data.get("rating"),
+                "type": data.get("type", "boardinghouse"),
+                "teaser_video": data.get("teaser_video") or data.get("video"),
+            }
+
+            # If your homepage model expects a price field, attach it
+            if "price" in BoardingHouseHomepage.__fields__:
+                item_kwargs["price"] = price_str
+
+            homepage_data.append(BoardingHouseHomepage(**item_kwargs).dict())
+
+        return {
+            "data": homepage_data,
+            "total": total,
+            "current_page": page,
+            "total_pages": (total + limit - 1) // limit,
+            "has_more": end < total,
         }
 
-        houses.append(safe)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Unhandled error in get_home")
+        raise HTTPException(status_code=500, detail=f"Error fetching homepage data: {str(e)}")
 
-    # Apply filter
-    if filter.lower() == "new":
-        houses.sort(key=lambda h: h.get("created_at", datetime.min), reverse=True)
-
-    # Pagination
-    total = len(houses)
-    start = (page - 1) * limit
-    end = min(start + limit, total)
-    paginated = houses[start:end]
-
-    # Build response items defensively
-    homepage_data = []
-    for data in paginated:
-        images_list = [str(x) for x in (data.get("gallery_images") or []) if x]
-        legacy_image = data.get("cover_image") or (images_list[0] if images_list else None)
-        cover = str(legacy_image) if legacy_image else "https://via.placeholder.com/400x200"
-
-        gender = (
-            "mixed" if data.get("gender_both")
-            else "male" if data.get("gender_male")
-            else "female" if data.get("gender_female")
-            else "both"
-        )
-
-        try:
-            homepage_item = BoardingHouseHomepage(
-                id=str(data.get("id", "")),
-                name_boardinghouse=str(data.get("name", "Unnamed")),
-                image=cover,
-                cover_image=str(data.get("cover_image") or cover),
-                gender=gender,
-                location=str(data.get("location", "") or ""),
-                rating=(data.get("rating") if isinstance(data.get("rating"), (int, float)) else None),
-                type=str(data.get("type", "boardinghouse")),
-                teaser_video=(str(data.get("teaser_video")) if data.get("teaser_video") else None),
-            )
-            homepage_data.append(homepage_item.dict())
-        except Exception:
-            logger.exception("Failed to build BoardingHouseHomepage for doc id=%s", data.get("id"))
-            continue
-
-    return {
-        "data": homepage_data,
-        "total": total,
-        "current_page": page,
-        "total_pages": (total + limit - 1) // limit,
-        "has_more": end < total,
-    }
-# --- end replacement ---
 
 
 # ---------------------------
