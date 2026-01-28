@@ -33,11 +33,11 @@ def validate_student_identity(university: str, student_id: str):
 # ---------------------------
 # GET /home - Paginated homepage summary (scroll-ready)
 # ---------------------------
-@router.get("", response_model=dict)
 @router.get("/", response_model=dict)
 async def get_home(
     university: Optional[str] = None,
     region: Optional[str] = None,
+    scope: str = Query("default", regex="^(default|global|scoped|region)$"),
     student_id: str = Query(...),
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=50),
@@ -45,40 +45,71 @@ async def get_home(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        uni = university or current_user.get("university")
-        validate_student_identity(uni, student_id)
-
-        # Determine universities
-        if region:
-            if region not in REGIONS:
-                raise HTTPException(status_code=400, detail="Invalid region")
-            universities = REGIONS[region]
-        elif university:
-            universities = [university]
+        # Resolve effective university for validation and fallbacks
+        uni_from_user = current_user.get("university")
+        if scope == "scoped" and not university:
+            # scoped requires explicit university param; fall back to user only if desired
+            uni = uni_from_user
         else:
-            universities = [uni]
+            uni = university or uni_from_user
 
-        # Primary query: global BOARDINGHOUSES
-        boardinghouses_docs = (
-            db.collection("BOARDINGHOUSES")
-            .where("universities", "array_contains_any", universities)
-            .get()
-        )
+        # Validate student identity against the effective university when needed
+        if uni:
+            validate_student_identity(uni, student_id)
 
-        # Fallback: scoped HOME/{uni}/BOARDHOUSE
-        if not boardinghouses_docs:
+        # Determine which universities to query based on scope
+        if scope == "global":
+            # Global: query BOARDINGHOUSES across universities (if university provided, restrict to it)
+            universities = [university] if university else []
+            boardinghouses_docs = (
+                db.collection("BOARDINGHOUSES")
+                .where("universities", "array_contains_any", universities or ["ALL"])
+                .get()
+            )
+        elif scope == "scoped":
+            # Scoped: require a specific university (explicit or user's)
+            if not uni:
+                raise HTTPException(status_code=400, detail="University required for scoped search")
             boardinghouses_docs = (
                 db.collection("HOME").document(uni).collection("BOARDHOUSE").get()
             )
+        elif scope == "region":
+            # Region: require region param
+            if not region or region not in REGIONS:
+                raise HTTPException(status_code=400, detail="Invalid or missing region")
+            universities = REGIONS[region]
+            boardinghouses_docs = (
+                db.collection("BOARDINGHOUSES")
+                .where("universities", "array_contains_any", universities)
+                .get()
+            )
+        else:  # default behavior (backwards compatible)
+            # Prefer explicit university param, otherwise use user's university
+            effective_uni = university or uni_from_user
+            if effective_uni:
+                universities = [effective_uni]
+                boardinghouses_docs = (
+                    db.collection("BOARDINGHOUSES")
+                    .where("universities", "array_contains_any", universities)
+                    .get()
+                )
+                # fallback to scoped HOME/{uni}/BOARDHOUSE if global query returns nothing
+                if not boardinghouses_docs:
+                    boardinghouses_docs = (
+                        db.collection("HOME").document(effective_uni).collection("BOARDHOUSE").get()
+                    )
+            else:
+                # No university context: return empty result set
+                boardinghouses_docs = []
 
+        # Collect and normalize documents
         houses = []
         for doc in boardinghouses_docs or []:
             data = doc.to_dict() or {}
             data["id"] = doc.id
 
-            # Normalize created_at
             ca = data.get("created_at")
-            if hasattr(ca, "to_datetime"):  # Firestore Timestamp
+            if hasattr(ca, "to_datetime"):
                 data["created_at"] = ca.to_datetime()
             elif isinstance(ca, datetime):
                 data["created_at"] = ca
@@ -87,147 +118,17 @@ async def get_home(
 
             houses.append(data)
 
-        # Apply filter
+        # Optional filter: newest first
         if filter.lower() == "new":
             houses.sort(key=lambda h: h.get("created_at", datetime.min), reverse=True)
 
-        # Pagination
+        # Pagination (slice-based)
         total = len(houses)
         start = (page - 1) * limit
         end = min(start + limit, total)
         paginated = houses[start:end]
 
-        homepage_data = []
-        for data in paginated:
-            # Prefer explicit cover_image, then legacy image fields, then first gallery image
-            images_list = []
-            if isinstance(data.get("gallery_images"), list):
-                images_list.extend([str(x) for x in data.get("gallery_images") if x])
-            if isinstance(data.get("images"), list):
-                images_list.extend([str(x) for x in data.get("images") if x])
-            # legacy single image fields
-            legacy_image = (
-                data.get("cover_image")
-                or data.get("coverImage")
-                or data.get("image")
-                or data.get("image_1")
-                or data.get("image_2")
-                or data.get("image_3")
-                or data.get("image_4")
-                or data.get("image_5")
-                or data.get("image_6")
-                or data.get("image_12")
-                or data.get("image_apartment")
-            )
-            cover = str(legacy_image) if legacy_image else (images_list.isNotEmpty and images_list[0] if images_list else None)
-            if not cover:
-                cover = "https://via.placeholder.com/400x200"
-
-            # Gender resolution
-            gender = (
-                "mixed" if data.get("gender_both")
-                else "male" if data.get("gender_male")
-                else "female" if data.get("gender_female")
-                else "both"
-            )
-
-            homepage_item = BoardingHouseHomepage(
-                id=str(data.get("id", "")),
-                name_boardinghouse=str(data.get("name", data.get("name_boardinghouse", "Unnamed"))),
-                image=cover,
-                cover_image=str(data.get("cover_image") or cover),
-                gender=gender,
-                location=str(data.get("location", "") or ""),
-                rating=(data.get("rating") if isinstance(data.get("rating"), (int, float)) else None),
-                type=str(data.get("type", "boardinghouse")),
-                teaser_video=str(data.get("teaser_video") or data.get("video") or "") if (data.get("teaser_video") or data.get("video")) else None,
-            )
-
-            homepage_data.append(homepage_item.dict())
-
-        return {
-            "data": homepage_data,
-            "total": total,
-            "current_page": page,
-            "total_pages": (total + limit - 1) // limit,
-            "has_more": end < total,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching homepage data: {str(e)}")
-
-
-
-
-# (Assume BoardingHouseHomepage Pydantic model is imported)
-
-@router.get("", response_model=dict)
-@router.get("/", response_model=dict)
-async def get_home(
-    university: Optional[str] = None,
-    region: Optional[str] = None,
-    student_id: str = Query(...),
-    page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1, le=50),
-    filter: str = Query("all"),
-    current_user: dict = Depends(get_current_user),
-):
-    try:
-        # choose effective university
-        uni = university or current_user.get("university")
-        validate_student_identity(uni, student_id)
-
-        # determine universities list
-        if region:
-            if region not in REGIONS:
-                raise HTTPException(status_code=400, detail="Invalid region")
-            universities = REGIONS[region]
-        elif university:
-            universities = [university]
-        else:
-            universities = [uni]
-
-        # primary query: global BOARDINGHOUSES
-        boardinghouses_docs = (
-            db.collection("BOARDINGHOUSES")
-            .where("universities", "array_contains_any", universities)
-            .get()
-        )
-
-        # fallback: scoped HOME/{uni}/BOARDHOUSE
-        if not boardinghouses_docs:
-            boardinghouses_docs = (
-                db.collection("HOME").document(uni).collection("BOARDHOUSE").get()
-            )
-
-        houses = []
-        for doc in boardinghouses_docs or []:
-            data = doc.to_dict() or {}
-            data["id"] = doc.id
-
-            # normalize created_at
-            ca = data.get("created_at")
-            if hasattr(ca, "to_datetime"):  # Firestore Timestamp
-                data["created_at"] = ca.to_datetime()
-            elif isinstance(ca, datetime):
-                data["created_at"] = ca
-            else:
-                data["created_at"] = datetime.utcnow()
-
-            houses.append(data)
-
-        # apply filter
-        if filter.lower() == "new":
-            houses.sort(key=lambda h: h.get("created_at", datetime.min), reverse=True)
-
-        # pagination
-        total = len(houses)
-        start = (page - 1) * limit
-        end = min(start + limit, total)
-        paginated = houses[start:end]
-
+        # Build response items
         homepage_data = []
         for data in paginated:
             images_list = []
@@ -250,7 +151,6 @@ async def get_home(
                 or data.get("image_apartment")
             )
 
-            cover = None
             if legacy_image:
                 cover = str(legacy_image)
             elif images_list:
