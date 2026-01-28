@@ -309,10 +309,13 @@ def normalize_and_build_response(boardinghouses_docs, page: int, limit: int, fil
         "total_pages": (total + limit - 1) // limit if limit else 0,
         "has_more": end < total,
     }
+
+
 # ---------------------------
 # GET /home - single robust implementation (scope param supported)
 # ---------------------------
 # --- Replace existing get_home with this function ---
+'''
 @router.get("", response_model=dict)
 @router.get("/", response_model=dict)
 async def get_home(
@@ -467,6 +470,7 @@ async def get_home(
         raise HTTPException(status_code=500, detail=f"Error fetching homepage data: {str(e)}")
 
 
+'''
 
 # ---------------------------
 # GET /home/boardinghouse/{id} (summary)
