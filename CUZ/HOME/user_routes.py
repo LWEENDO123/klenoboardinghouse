@@ -43,6 +43,206 @@ def validate_student_identity(university: str, student_id: str):
     return True
 
 
+# Replace or add these handlers in CUZ/HOME/user_routes.py
+from fastapi import APIRouter, Query, Depends, HTTPException
+from typing import Optional
+from datetime import datetime
+
+router = APIRouter(prefix="/home", tags=["HOME"])
+
+def safe_array_contains_any(collection_ref, field, values):
+    if not values:
+        return []
+    if len(values) > 10:
+        raise HTTPException(status_code=400, detail="Too many values; reduce to 10 or fewer")
+    try:
+        docs = collection_ref.where(field, "array_contains_any", values).get()
+        return docs or []
+    except Exception:
+        logger.exception("Firestore array_contains_any failed for field=%s values=%s", field, values)
+        raise HTTPException(status_code=500, detail="Error querying boardinghouses")
+
+def normalize_and_build_response(boardinghouses_docs, page: int, limit: int, filter: str):
+    # Defensive normalization (same logic used previously)
+    houses = []
+    for doc in boardinghouses_docs or []:
+        try:
+            raw = doc.to_dict() or {}
+        except Exception:
+            logger.exception("Failed to parse Firestore doc id=%s", getattr(doc, "id", "<unknown>"))
+            continue
+
+        doc_id = getattr(doc, "id", raw.get("id", ""))
+        ca = raw.get("created_at")
+        try:
+            if hasattr(ca, "to_datetime"):
+                created_at = ca.to_datetime()
+            elif isinstance(ca, datetime):
+                created_at = ca
+            else:
+                created_at = datetime.utcnow()
+        except Exception:
+            logger.exception("created_at normalization failed for doc id=%s", doc_id)
+            created_at = datetime.utcnow()
+
+        safe = {
+            "id": str(doc_id),
+            "name": raw.get("name") or raw.get("name_boardinghouse") or "Unnamed",
+            "cover_image": raw.get("cover_image") or raw.get("image") or None,
+            "gallery_images": list(raw.get("gallery_images") or raw.get("images") or []),
+            "location": raw.get("location") or "",
+            "rating": raw.get("rating") if isinstance(raw.get("rating"), (int, float)) else None,
+            "type": raw.get("type") or "boardinghouse",
+            "created_at": created_at,
+            "gender_male": bool(raw.get("gender_male")),
+            "gender_female": bool(raw.get("gender_female")),
+            "gender_both": bool(raw.get("gender_both")),
+            "teaser_video": raw.get("teaser_video") or raw.get("video") or None,
+            # include other fields you need downstream
+        }
+        houses.append(safe)
+
+    if filter.lower() == "new":
+        houses.sort(key=lambda h: h.get("created_at", datetime.min), reverse=True)
+
+    total = len(houses)
+    start = (page - 1) * limit
+    end = min(start + limit, total)
+    paginated = houses[start:end]
+
+    homepage_data = []
+    for data in paginated:
+        images_list = [str(x) for x in (data.get("gallery_images") or []) if x]
+        legacy_image = data.get("cover_image") or (images_list[0] if images_list else None)
+        cover = str(legacy_image) if legacy_image else "https://via.placeholder.com/400x200"
+
+        gender = (
+            "mixed" if data.get("gender_both")
+            else "male" if data.get("gender_male")
+            else "female" if data.get("gender_female")
+            else "both"
+        )
+
+        try:
+            item_kwargs = {
+                "id": str(data.get("id", "")),
+                "name_boardinghouse": str(data.get("name", "Unnamed")),
+                "image": cover,
+                "cover_image": str(data.get("cover_image") or cover),
+                "gender": gender,
+                "location": str(data.get("location", "") or ""),
+                "rating": (data.get("rating") if isinstance(data.get("rating"), (int, float)) else None),
+                "type": str(data.get("type", "boardinghouse")),
+                "teaser_video": (str(data.get("teaser_video")) if data.get("teaser_video") else None),
+            }
+            # attach price if model expects it
+            if "price" in BoardingHouseHomepage.__fields__:
+                # compute lowest price defensively (example)
+                item_kwargs["price"] = "N/A"
+            homepage_data.append(BoardingHouseHomepage(**item_kwargs).dict())
+        except Exception:
+            logger.exception("Failed to build BoardingHouseHomepage for doc id=%s", data.get("id"))
+            continue
+
+    return {
+        "data": homepage_data,
+        "total": total,
+        "current_page": page,
+        "total_pages": (total + limit - 1) // limit,
+        "has_more": end < total,
+    }
+
+# -------------------------
+# Default homepage (no scoped behavior)
+@router.get("", response_model=dict)
+@router.get("/", response_model=dict)
+async def get_home(
+    university: Optional[str] = None,
+    region: Optional[str] = None,
+    student_id: str = Query(...),
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=50),
+    filter: str = Query("all"),
+    current_user: dict = Depends(get_current_user),
+):
+    try:
+        uni = university or current_user.get("university")
+        validate_student_identity(uni, student_id)
+
+        # Determine universities for broad/global queries
+        if region:
+            if region not in REGIONS:
+                raise HTTPException(status_code=400, detail="Invalid region")
+            universities = REGIONS[region]
+        elif university:
+            universities = [university]
+        else:
+            universities = [uni]
+
+        boardinghouses_docs = []
+        if universities:
+            if len(universities) > 10:
+                raise HTTPException(status_code=400, detail="Too many universities in query; reduce to 10 or fewer")
+            boardinghouses_docs = safe_array_contains_any(db.collection("BOARDINGHOUSES"), "universities", universities)
+
+        # fallback to scoped HOME if global returned nothing
+        if not boardinghouses_docs:
+            boardinghouses_docs = db.collection("HOME").document(uni).collection("BOARDHOUSE").limit(100).get()
+
+        return normalize_and_build_response(boardinghouses_docs, page, limit, filter)
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unhandled error in get_home")
+        raise HTTPException(status_code=500, detail="Error fetching homepage data")
+
+# -------------------------
+# Scoped endpoint (called by dropdown)
+@router.get("/scoped", response_model=dict)
+async def get_home_scoped(
+    university: str = Query(..., description="University selected from dropdown"),
+    student_id: str = Query(...),
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=50),
+    filter: str = Query("all"),
+    current_user: dict = Depends(get_current_user),
+):
+    try:
+        # Validate the requesting student against their own university (allow browsing other universities)
+        user_uni = current_user.get("university")
+        try:
+            validate_student_identity(user_uni, student_id)
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("validate_student_identity unexpected error for uni=%s student_id=%s", user_uni, student_id)
+            raise HTTPException(status_code=500, detail="Error validating student identity")
+
+        # Ensure the selected university exists (basic check)
+        # If you want a stricter check, you can verify HOME/{university} exists
+        try:
+            uni_ref = db.collection("HOME").document(university)
+            if not uni_ref.get().exists:
+                raise HTTPException(status_code=400, detail="Selected university not available")
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("Error checking existence of HOME/%s", university)
+            raise HTTPException(status_code=500, detail="Error validating selected university")
+
+        # Query the scoped HOME collection only
+        boardinghouses_docs = db.collection("HOME").document(university).collection("BOARDHOUSE").get()
+
+        return normalize_and_build_response(boardinghouses_docs, page, limit, filter)
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unhandled error in get_home_scoped")
+        raise HTTPException(status_code=500, detail="Error fetching scoped homepage data")
+
+
 # ---------------------------
 # GET /home - single robust implementation (scope param supported)
 # ---------------------------
