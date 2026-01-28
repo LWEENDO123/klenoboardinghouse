@@ -80,26 +80,37 @@ async def get_home(
     university: Optional[str] = None,
     region: Optional[str] = None,
     student_id: str = Query(...),
+    scope: Optional[str] = Query(None, description="Use 'scoped' when selecting a university from the dropdown"),
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=50),
     filter: str = Query("all"),
     current_user: dict = Depends(get_current_user),
 ):
-    logger.debug("get_home called: university=%s region=%s student_id=%s page=%d limit=%d filter=%s",
-                 university, region, student_id, page, limit, filter)
+    logger.debug(
+        "get_home called: university=%s region=%s scope=%s student_id=%s page=%d limit=%d filter=%s",
+        university, region, scope, student_id, page, limit, filter
+    )
     try:
-        # Step 1: determine effective uni and validate requester (against their own uni)
+        # Decide which university will be used for querying
         uni = university or current_user.get("university")
-        logger.debug("Validating requester student_id=%s against user_uni=%s", student_id, uni)
+
+        # Validation: if client explicitly requested scoped browsing, validate the requester
+        # against their own university (allow browsing other universities).
         try:
-            validate_student_identity(uni, student_id)
+            if scope and scope.lower() == "scoped":
+                requester_uni = current_user.get("university")
+                logger.debug("Scope=scoped: validating student_id=%s against requester_uni=%s", student_id, requester_uni)
+                validate_student_identity(requester_uni, student_id)
+            else:
+                logger.debug("Default scope: validating student_id=%s against uni=%s", student_id, uni)
+                validate_student_identity(uni, student_id)
         except HTTPException:
             raise
         except Exception:
             logger.exception("validate_student_identity unexpected error for uni=%s student_id=%s", uni, student_id)
             raise HTTPException(status_code=500, detail="Error validating student identity")
 
-        # Step 2: determine universities for query
+        # Determine universities for broad/global queries
         if region:
             logger.debug("Region provided: %s", region)
             if region not in REGIONS:
@@ -111,7 +122,7 @@ async def get_home(
             universities = [uni]
         logger.debug("Universities to query: %s", universities)
 
-        # Step 3: run global query safely (array_contains_any) or fallback
+        # Run global query safely (array_contains_any) or fallback to scoped HOME
         boardinghouses_docs = []
         if universities:
             if len(universities) > 10:
@@ -126,7 +137,7 @@ async def get_home(
                 logger.exception("Global BOARDINGHOUSES query failed for universities=%s", universities)
                 raise HTTPException(status_code=500, detail="Error querying boardinghouses")
 
-        # Step 4: fallback to scoped HOME/{uni}/BOARDHOUSE if global returned nothing
+        # Fallback: scoped HOME/{uni}/BOARDHOUSE
         if not boardinghouses_docs:
             try:
                 logger.debug("Falling back to HOME/%s/BOARDHOUSE (limit=100)", uni)
@@ -136,7 +147,7 @@ async def get_home(
                 logger.exception("Scoped fallback query failed for HOME/%s/BOARDHOUSE", uni)
                 raise HTTPException(status_code=500, detail="Error querying scoped boardinghouses")
 
-        # Step 5: normalize and build response (uses shared helper)
+        # Normalize and return
         return normalize_and_build_response(boardinghouses_docs, page, limit, filter)
 
     except HTTPException:
@@ -144,6 +155,7 @@ async def get_home(
     except Exception:
         logger.exception("Unhandled error in get_home")
         raise HTTPException(status_code=500, detail="Error fetching homepage data")
+
 
 
 # -------------------------
