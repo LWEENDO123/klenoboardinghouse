@@ -159,6 +159,141 @@ async def get_home(
         raise HTTPException(status_code=500, detail=f"Error fetching homepage data: {str(e)}")
 
 
+
+
+# (Assume BoardingHouseHomepage Pydantic model is imported)
+
+@router.get("", response_model=dict)
+@router.get("/", response_model=dict)
+async def get_home(
+    university: Optional[str] = None,
+    region: Optional[str] = None,
+    student_id: str = Query(...),
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=50),
+    filter: str = Query("all"),
+    current_user: dict = Depends(get_current_user),
+):
+    try:
+        # choose effective university
+        uni = university or current_user.get("university")
+        validate_student_identity(uni, student_id)
+
+        # determine universities list
+        if region:
+            if region not in REGIONS:
+                raise HTTPException(status_code=400, detail="Invalid region")
+            universities = REGIONS[region]
+        elif university:
+            universities = [university]
+        else:
+            universities = [uni]
+
+        # primary query: global BOARDINGHOUSES
+        boardinghouses_docs = (
+            db.collection("BOARDINGHOUSES")
+            .where("universities", "array_contains_any", universities)
+            .get()
+        )
+
+        # fallback: scoped HOME/{uni}/BOARDHOUSE
+        if not boardinghouses_docs:
+            boardinghouses_docs = (
+                db.collection("HOME").document(uni).collection("BOARDHOUSE").get()
+            )
+
+        houses = []
+        for doc in boardinghouses_docs or []:
+            data = doc.to_dict() or {}
+            data["id"] = doc.id
+
+            # normalize created_at
+            ca = data.get("created_at")
+            if hasattr(ca, "to_datetime"):  # Firestore Timestamp
+                data["created_at"] = ca.to_datetime()
+            elif isinstance(ca, datetime):
+                data["created_at"] = ca
+            else:
+                data["created_at"] = datetime.utcnow()
+
+            houses.append(data)
+
+        # apply filter
+        if filter.lower() == "new":
+            houses.sort(key=lambda h: h.get("created_at", datetime.min), reverse=True)
+
+        # pagination
+        total = len(houses)
+        start = (page - 1) * limit
+        end = min(start + limit, total)
+        paginated = houses[start:end]
+
+        homepage_data = []
+        for data in paginated:
+            images_list = []
+            if isinstance(data.get("gallery_images"), list):
+                images_list.extend([str(x) for x in data.get("gallery_images") if x])
+            if isinstance(data.get("images"), list):
+                images_list.extend([str(x) for x in data.get("images") if x])
+
+            legacy_image = (
+                data.get("cover_image")
+                or data.get("coverImage")
+                or data.get("image")
+                or data.get("image_1")
+                or data.get("image_2")
+                or data.get("image_3")
+                or data.get("image_4")
+                or data.get("image_5")
+                or data.get("image_6")
+                or data.get("image_12")
+                or data.get("image_apartment")
+            )
+
+            cover = None
+            if legacy_image:
+                cover = str(legacy_image)
+            elif images_list:
+                cover = images_list[0]
+            else:
+                cover = "https://via.placeholder.com/400x200"
+
+            gender = (
+                "mixed" if data.get("gender_both")
+                else "male" if data.get("gender_male")
+                else "female" if data.get("gender_female")
+                else "both"
+            )
+
+            homepage_item = BoardingHouseHomepage(
+                id=str(data.get("id", "")),
+                name_boardinghouse=str(data.get("name", data.get("name_boardinghouse", "Unnamed"))),
+                image=cover,
+                cover_image=str(data.get("cover_image") or cover),
+                gender=gender,
+                location=str(data.get("location", "") or ""),
+                rating=(data.get("rating") if isinstance(data.get("rating"), (int, float)) else None),
+                type=str(data.get("type", "boardinghouse")),
+                teaser_video=(str(data.get("teaser_video") or data.get("video")) if (data.get("teaser_video") or data.get("video")) else None),
+            )
+
+            homepage_data.append(homepage_item.dict())
+
+        return {
+            "data": homepage_data,
+            "total": total,
+            "current_page": page,
+            "total_pages": (total + limit - 1) // limit,
+            "has_more": end < total,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching homepage data: {str(e)}")
+
+
+
 # ---------------------------
 # GET /home/boardinghouse/{id}
 # ---------------------------
