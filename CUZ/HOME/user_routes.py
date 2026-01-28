@@ -45,90 +45,102 @@ async def get_home(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        # Resolve effective university for validation and fallbacks
-        uni_from_user = current_user.get("university")
-        if scope == "scoped" and not university:
-            # scoped requires explicit university param; fall back to user only if desired
-            uni = uni_from_user
-        else:
-            uni = university or uni_from_user
+        # Resolve effective university
+        user_uni = current_user.get("university")
+        effective_uni = university or user_uni
 
-        # Validate student identity against the effective university when needed
-        if uni:
-            validate_student_identity(uni, student_id)
+        # Validate student identity early (returns 4xx if invalid)
+        if effective_uni:
+            try:
+                validate_student_identity(effective_uni, student_id)
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.exception("validate_student_identity raised unexpected error")
+                raise HTTPException(status_code=400, detail="Invalid student/university combination")
 
-        # Determine which universities to query based on scope
+        # Build boardinghouses_docs depending on scope
+        boardinghouses_docs = []
+
         if scope == "global":
-            # Global: query BOARDINGHOUSES across universities (if university provided, restrict to it)
-            universities = [university] if university else []
-            boardinghouses_docs = (
-                db.collection("BOARDINGHOUSES")
-                .where("universities", "array_contains_any", universities or ["ALL"])
-                .get()
-            )
+            # If a specific university was provided, restrict to it; otherwise query all
+            if university:
+                universities = [university]
+            else:
+                # If you want truly global, you may query without array_contains_any,
+                # or use a safe sentinel list if your DB supports it.
+                universities = None
+
+            if universities:
+                # safe: only call array_contains_any when list is non-empty
+                boardinghouses_docs = db.collection("BOARDINGHOUSES") \
+                    .where("universities", "array_contains_any", universities).get()
+            else:
+                # fallback: fetch all documents (careful with large collections)
+                boardinghouses_docs = db.collection("BOARDINGHOUSES").get()
+
         elif scope == "scoped":
-            # Scoped: require a specific university (explicit or user's)
-            if not uni:
+            if not effective_uni:
                 raise HTTPException(status_code=400, detail="University required for scoped search")
-            boardinghouses_docs = (
-                db.collection("HOME").document(uni).collection("BOARDHOUSE").get()
-            )
+            boardinghouses_docs = db.collection("HOME").document(effective_uni).collection("BOARDHOUSE").get()
+
         elif scope == "region":
-            # Region: require region param
             if not region or region not in REGIONS:
                 raise HTTPException(status_code=400, detail="Invalid or missing region")
             universities = REGIONS[region]
-            boardinghouses_docs = (
-                db.collection("BOARDINGHOUSES")
-                .where("universities", "array_contains_any", universities)
-                .get()
-            )
-        else:  # default behavior (backwards compatible)
-            # Prefer explicit university param, otherwise use user's university
-            effective_uni = university or uni_from_user
+            if not universities:
+                boardinghouses_docs = []
+            else:
+                boardinghouses_docs = db.collection("BOARDINGHOUSES") \
+                    .where("universities", "array_contains_any", universities).get()
+
+        else:  # default
             if effective_uni:
                 universities = [effective_uni]
-                boardinghouses_docs = (
-                    db.collection("BOARDINGHOUSES")
-                    .where("universities", "array_contains_any", universities)
-                    .get()
-                )
-                # fallback to scoped HOME/{uni}/BOARDHOUSE if global query returns nothing
+                boardinghouses_docs = db.collection("BOARDINGHOUSES") \
+                    .where("universities", "array_contains_any", universities).get()
                 if not boardinghouses_docs:
-                    boardinghouses_docs = (
-                        db.collection("HOME").document(effective_uni).collection("BOARDHOUSE").get()
-                    )
+                    boardinghouses_docs = db.collection("HOME").document(effective_uni).collection("BOARDHOUSE").get()
             else:
                 # No university context: return empty result set
                 boardinghouses_docs = []
 
-        # Collect and normalize documents
+        # Normalize docs safely
         houses = []
         for doc in boardinghouses_docs or []:
-            data = doc.to_dict() or {}
-            data["id"] = doc.id
+            try:
+                data = doc.to_dict() or {}
+            except Exception:
+                logger.exception("Failed to parse Firestore doc %s", getattr(doc, "id", "<unknown>"))
+                continue
+
+            data["id"] = getattr(doc, "id", data.get("id", ""))
 
             ca = data.get("created_at")
-            if hasattr(ca, "to_datetime"):
-                data["created_at"] = ca.to_datetime()
-            elif isinstance(ca, datetime):
-                data["created_at"] = ca
-            else:
+            try:
+                if hasattr(ca, "to_datetime"):
+                    data["created_at"] = ca.to_datetime()
+                elif isinstance(ca, datetime):
+                    data["created_at"] = ca
+                else:
+                    data["created_at"] = datetime.utcnow()
+            except Exception:
+                logger.exception("Error normalizing created_at for doc %s", data.get("id"))
                 data["created_at"] = datetime.utcnow()
 
             houses.append(data)
 
-        # Optional filter: newest first
+        # Apply filter
         if filter.lower() == "new":
             houses.sort(key=lambda h: h.get("created_at", datetime.min), reverse=True)
 
-        # Pagination (slice-based)
+        # Pagination
         total = len(houses)
         start = (page - 1) * limit
         end = min(start + limit, total)
         paginated = houses[start:end]
 
-        # Build response items
+        # Build response
         homepage_data = []
         for data in paginated:
             images_list = []
@@ -190,6 +202,7 @@ async def get_home(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("Unhandled error in get_home")
         raise HTTPException(status_code=500, detail=f"Error fetching homepage data: {str(e)}")
 
 
