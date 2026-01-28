@@ -6,6 +6,7 @@ from datetime import datetime
 # Model for detailed view when a boarding house is clicked
 # ---------------------------
 class BoardingHouseSummary(BaseModel):
+    id: str
     name: str
 
     # Room type images, prices, availability
