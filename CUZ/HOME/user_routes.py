@@ -1,26 +1,51 @@
-# HOME/user_routes.py
+# CUZ/HOME/user_routes.py
 import logging
-from fastapi import APIRouter, Query, Depends, HTTPException
-from datetime import datetime
+import math
 from typing import Optional, List
+from datetime import datetime
+
+from fastapi import APIRouter, Query, Depends, HTTPException
+from fastapi.responses import RedirectResponse
+
 from CUZ.USERS.firebase import db
-from CUZ.HOME.models import BoardingHouseHomepage
-from CUZ.HOME.security import get_current_user
+from CUZ.HOME.models import BoardingHouseHomepage, BoardingHouseSummary
+from CUZ.HOME.security import get_current_user, get_premium_student
+from CUZ.USERS.security import get_admin_or_landlord
+from CUZ.routers.region_router import get_boardinghouse_coords, resolve_region_offset
+from CUZ.utils.token_utils import generate_location_token, decode_location_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/home", tags=["HOME"])
 
+# Example region dictionary (keep or import your real REGIONS)
+REGIONS = {
+    "lusaka_west": ["UNZAM", "CUZM"],
+    # add other regions as needed
+}
+
+# ---------------------------
+# Helper: Validate student identity
+# ---------------------------
 def validate_student_identity(university: str, student_id: str):
-    user_ref = db.collection("USERS").document(university).collection("students").document(student_id)
+    """
+    Ensure the student exists in USERS/{university}/students/{student_id}.
+    Acts like a campus ID check.
+    """
     try:
+        user_ref = db.collection("USERS").document(university).collection("students").document(student_id)
         snap = user_ref.get()
-    except Exception as e:
+    except Exception:
         logger.exception("Firestore error checking student identity uni=%s student_id=%s", university, student_id)
         raise HTTPException(status_code=500, detail="Error validating student identity")
+
     if not snap.exists:
         raise HTTPException(status_code=403, detail="Invalid student identity")
     return True
 
+
+# ---------------------------
+# GET /home - single robust implementation (scope param supported)
+# ---------------------------
 @router.get("/", response_model=dict)
 async def get_home(
     university: Optional[str] = None,
@@ -32,17 +57,19 @@ async def get_home(
     filter: str = Query("all"),
     current_user: dict = Depends(get_current_user),
 ):
-    logger.debug("get_home called scope=%s university=%s region=%s student_id=%s page=%d limit=%d filter=%s",
-                 scope, university, region, student_id, page, limit, filter)
+    logger.debug(
+        "get_home called scope=%s university=%s region=%s student_id=%s page=%d limit=%d filter=%s",
+        scope, university, region, student_id, page, limit, filter
+    )
 
     user_uni = current_user.get("university")
     effective_uni = university or user_uni
 
+    # Validate student identity if we have an effective university
     if effective_uni:
         validate_student_identity(effective_uni, student_id)
 
-    boardinghouses_docs = []
-
+    # Helper to safely call array_contains_any
     def safe_array_contains_any(collection_ref, field, values):
         if not values:
             logger.debug("safe_array_contains_any: empty values, returning all docs")
@@ -52,10 +79,11 @@ async def get_home(
             values = values[:10]
         try:
             return collection_ref.where(field, "array_contains_any", values).get()
-        except Exception as e:
+        except Exception:
             logger.exception("Firestore query failed field=%s values=%s", field, values)
             raise HTTPException(status_code=500, detail="Error querying boardinghouses")
 
+    # Execute the chosen query path
     try:
         if scope == "global":
             if university:
@@ -80,10 +108,11 @@ async def get_home(
                 boardinghouses_docs = []
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Unhandled Firestore error in get_home scope=%s uni=%s region=%s", scope, effective_uni, region)
         raise HTTPException(status_code=500, detail="Error fetching boardinghouses")
 
+    # Normalize documents
     houses = []
     for doc in boardinghouses_docs or []:
         try:
@@ -108,14 +137,17 @@ async def get_home(
 
         houses.append(data)
 
+    # Apply filter
     if filter.lower() == "new":
         houses.sort(key=lambda h: h.get("created_at", datetime.min), reverse=True)
 
+    # Pagination
     total = len(houses)
     start = (page - 1) * limit
     end = min(start + limit, total)
     paginated = houses[start:end]
 
+    # Build response items
     homepage_data = []
     for data in paginated:
         images_list = []
@@ -176,7 +208,7 @@ async def get_home(
 
 
 # ---------------------------
-# GET /home/boardinghouse/{id}
+# GET /home/boardinghouse/{id} (summary)
 # ---------------------------
 @router.get("/boardinghouse/{id}", response_model=BoardingHouseSummary)
 async def get_boardinghouse_summary(
@@ -187,6 +219,7 @@ async def get_boardinghouse_summary(
 ):
     validate_student_identity(university, student_id)
 
+    # Try global collection first
     ref = db.collection("BOARDINGHOUSES").document(id).get()
     if not ref.exists:
         ref = db.collection("HOME").document(university).collection("boardinghouse").document(id).get()
@@ -195,7 +228,7 @@ async def get_boardinghouse_summary(
 
     data = ref.to_dict() or {}
 
-    # Normalize gallery_images: prefer explicit key, fallback to images/gallery
+    # Normalize gallery_images
     gallery = []
     if isinstance(data.get("gallery_images"), list):
         gallery = [str(x) for x in data.get("gallery_images") if x]
@@ -204,13 +237,11 @@ async def get_boardinghouse_summary(
     elif isinstance(data.get("gallery"), list):
         gallery = [str(x) for x in data.get("gallery") if x]
 
-    # Normalize cover image
     cover_image = data.get("cover_image") or data.get("coverImage") or data.get("image") or (gallery[0] if gallery else None)
 
     payload = {
+        "id": id,
         "name": data.get("name", "Unnamed"),
-
-        # Room types
         "image_12": data.get("image_12"),
         "price_12": data.get("price_12"),
         "sharedroom_12": data.get("sharedroom_12"),
@@ -232,20 +263,14 @@ async def get_boardinghouse_summary(
         "image_1": data.get("image_1"),
         "price_1": data.get("price_1"),
         "singleroom": data.get("singleroom"),
-
-        # Apartment
         "image_apartment": data.get("image_apartment"),
         "price_apartment": data.get("price_apartment"),
         "apartment": data.get("apartment"),
-
-        # Media
         "cover_image": cover_image,
         "gallery_images": gallery,
         "videos": data.get("videos", []) or [],
         "voice_notes": data.get("voice_notes", []) or [],
-
-        # Metadata
-        "space_description": data.get("space_description") or data.get("spaceDescription") or BoardingHouseSummary.__fields__['space_description'].get_default(),
+        "space_description": data.get("space_description") or data.get("spaceDescription") or "",
         "conditions": data.get("conditions"),
         "amenities": data.get("amenities", []) or [],
         "location": data.get("location", "") or "",
@@ -253,15 +278,15 @@ async def get_boardinghouse_summary(
         "yango_coordinates": data.get("yango_coordinates"),
     }
 
-    # Validate and return via Pydantic model
     try:
         return BoardingHouseSummary(**payload)
     except Exception as e:
-        # If validation fails, return a 500 with details for easier debugging
+        logger.exception("BoardingHouseSummary validation failed for id=%s", id)
         raise HTTPException(status_code=500, detail=f"Boarding house payload validation error: {str(e)}")
 
- 
 
+# (Other endpoints such as directions, landlord previews, redirects remain unchanged.
+#  Add them below ensuring all referenced helpers and imports exist.)
 
 
 # ---------------------------
