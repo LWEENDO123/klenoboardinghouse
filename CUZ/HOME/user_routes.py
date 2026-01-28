@@ -46,6 +46,7 @@ def validate_student_identity(university: str, student_id: str):
 # ---------------------------
 # GET /home - single robust implementation (scope param supported)
 # ---------------------------
+# --- Replace existing get_home with this function ---
 @router.get("/", response_model=dict)
 async def get_home(
     university: Optional[str] = None,
@@ -67,34 +68,42 @@ async def get_home(
 
     # Validate student identity if we have an effective university
     if effective_uni:
-        validate_student_identity(effective_uni, student_id)
+        try:
+            validate_student_identity(effective_uni, student_id)
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("validate_student_identity unexpected error for uni=%s student_id=%s", effective_uni, student_id)
+            raise HTTPException(status_code=500, detail="Error validating student identity")
 
     # Helper to safely call array_contains_any
     def safe_array_contains_any(collection_ref, field, values):
         # Defensive: don't call array_contains_any with empty list
         if not values:
-            logger.debug("safe_array_contains_any: empty values, returning empty list to avoid invalid query")
+            logger.debug("safe_array_contains_any: empty values -> returning [] to avoid invalid query")
             return []
         # Firestore limit: array_contains_any accepts up to 10 values
         if len(values) > 10:
-            logger.warning("safe_array_contains_any: values length > 10, returning 400 instead of truncating")
+            logger.warning("safe_array_contains_any: values length > 10 -> rejecting request")
             raise HTTPException(status_code=400, detail="Too many values for array_contains_any; reduce to 10 or fewer")
+        logger.debug("safe_array_contains_any: calling where with %d values", len(values))
         try:
             docs = collection_ref.where(field, "array_contains_any", values).get()
+            logger.debug("safe_array_contains_any: returned %d docs", len(docs) if docs is not None else 0)
             return docs or []
         except Exception:
-            logger.exception("Firestore query failed field=%s values=%s", field, values)
+            logger.exception("Firestore array_contains_any failed for field=%s values=%s", field, values)
             raise HTTPException(status_code=500, detail="Error querying boardinghouses")
 
     # Execute the chosen query path
     try:
+        logger.debug("Preparing Firestore query for scope=%s effective_uni=%s region=%s", scope, effective_uni, region)
         if scope == "global":
             if university:
                 logger.debug("global scope with university=%s", university)
                 boardinghouses_docs = safe_array_contains_any(db.collection("BOARDINGHOUSES"), "universities", [university])
             else:
-                logger.debug("global scope without university: fetching limited BOARDINGHOUSES")
-                # Avoid fetching entire collection in production; apply a safe limit
+                logger.debug("global scope without university: fetching limited BOARDINGHOUSES (limit=100)")
                 boardinghouses_docs = db.collection("BOARDINGHOUSES").limit(100).get()
         elif scope == "scoped":
             if not effective_uni:
@@ -122,6 +131,13 @@ async def get_home(
     except Exception:
         logger.exception("Unhandled Firestore error in get_home scope=%s uni=%s region=%s", scope, effective_uni, region)
         raise HTTPException(status_code=500, detail="Error fetching boardinghouses")
+
+    # Debug: log how many docs we got
+    try:
+        count_docs = len(boardinghouses_docs) if boardinghouses_docs is not None else 0
+        logger.debug("Firestore query returned %d docs", count_docs)
+    except Exception:
+        logger.debug("Could not determine docs count (non-iterable result)")
 
     # Normalize documents defensively
     houses = []
@@ -177,11 +193,7 @@ async def get_home(
     homepage_data = []
     for data in paginated:
         images_list = [str(x) for x in (data.get("gallery_images") or []) if x]
-        legacy_image = (
-            data.get("cover_image")
-            or (images_list[0] if images_list else None)
-        )
-
+        legacy_image = data.get("cover_image") or (images_list[0] if images_list else None)
         cover = str(legacy_image) if legacy_image else "https://via.placeholder.com/400x200"
 
         gender = (
@@ -206,7 +218,6 @@ async def get_home(
             homepage_data.append(homepage_item.dict())
         except Exception:
             logger.exception("Failed to build BoardingHouseHomepage for doc id=%s", data.get("id"))
-            # skip malformed item instead of failing the whole response
             continue
 
     return {
@@ -216,6 +227,8 @@ async def get_home(
         "total_pages": (total + limit - 1) // limit,
         "has_more": end < total,
     }
+# --- end replacement ---
+
 
 # ---------------------------
 # GET /home/boardinghouse/{id} (summary)
