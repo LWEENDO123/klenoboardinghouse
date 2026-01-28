@@ -196,6 +196,26 @@ async def get_home_scoped(
 
 
 # -------------------------
+
+# -------------------------
+# Shared helper: safe array_contains_any
+def safe_array_contains_any(collection_ref, field, values):
+    logger.debug("safe_array_contains_any called with %d values: %s", len(values) if values else 0, values)
+    if not values:
+        logger.debug("safe_array_contains_any: empty values -> returning []")
+        return []
+    if len(values) > 10:
+        logger.warning("safe_array_contains_any: values length > 10 -> rejecting request")
+        raise HTTPException(status_code=400, detail="Too many values for array_contains_any; reduce to 10 or fewer")
+    try:
+        docs = collection_ref.where(field, "array_contains_any", values).get()
+        logger.debug("safe_array_contains_any: returned %d docs", len(docs) if docs is not None else 0)
+        return docs or []
+    except Exception:
+        logger.exception("Firestore array_contains_any failed for field=%s values=%s", field, values)
+        raise HTTPException(status_code=500, detail="Error querying boardinghouses")
+
+
 # -------------------------
 # Shared helper: normalize documents and build homepage response
 def normalize_and_build_response(boardinghouses_docs, page: int, limit: int, filter: str):
@@ -237,7 +257,6 @@ def normalize_and_build_response(boardinghouses_docs, page: int, limit: int, fil
             "gender_female": bool(raw.get("gender_female")),
             "gender_both": bool(raw.get("gender_both")),
             "teaser_video": raw.get("teaser_video") or raw.get("video") or None,
-            # include other fields if needed
         }
         houses.append(safe)
 
@@ -276,7 +295,6 @@ def normalize_and_build_response(boardinghouses_docs, page: int, limit: int, fil
                 "type": str(data.get("type", "boardinghouse")),
                 "teaser_video": (str(data.get("teaser_video")) if data.get("teaser_video") else None),
             }
-            # attach price if model expects it
             if "price" in BoardingHouseHomepage.__fields__:
                 item_kwargs["price"] = data.get("price", None) or "N/A"
             homepage_data.append(BoardingHouseHomepage(**item_kwargs).dict())
@@ -291,7 +309,6 @@ def normalize_and_build_response(boardinghouses_docs, page: int, limit: int, fil
         "total_pages": (total + limit - 1) // limit if limit else 0,
         "has_more": end < total,
     }
-
 # ---------------------------
 # GET /home - single robust implementation (scope param supported)
 # ---------------------------
