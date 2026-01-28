@@ -50,107 +50,7 @@ from datetime import datetime
 
 router = APIRouter(prefix="/home", tags=["HOME"])
 
-def safe_array_contains_any(collection_ref, field, values):
-    if not values:
-        return []
-    if len(values) > 10:
-        raise HTTPException(status_code=400, detail="Too many values; reduce to 10 or fewer")
-    try:
-        docs = collection_ref.where(field, "array_contains_any", values).get()
-        return docs or []
-    except Exception:
-        logger.exception("Firestore array_contains_any failed for field=%s values=%s", field, values)
-        raise HTTPException(status_code=500, detail="Error querying boardinghouses")
-
-def normalize_and_build_response(boardinghouses_docs, page: int, limit: int, filter: str):
-    # Defensive normalization (same logic used previously)
-    houses = []
-    for doc in boardinghouses_docs or []:
-        try:
-            raw = doc.to_dict() or {}
-        except Exception:
-            logger.exception("Failed to parse Firestore doc id=%s", getattr(doc, "id", "<unknown>"))
-            continue
-
-        doc_id = getattr(doc, "id", raw.get("id", ""))
-        ca = raw.get("created_at")
-        try:
-            if hasattr(ca, "to_datetime"):
-                created_at = ca.to_datetime()
-            elif isinstance(ca, datetime):
-                created_at = ca
-            else:
-                created_at = datetime.utcnow()
-        except Exception:
-            logger.exception("created_at normalization failed for doc id=%s", doc_id)
-            created_at = datetime.utcnow()
-
-        safe = {
-            "id": str(doc_id),
-            "name": raw.get("name") or raw.get("name_boardinghouse") or "Unnamed",
-            "cover_image": raw.get("cover_image") or raw.get("image") or None,
-            "gallery_images": list(raw.get("gallery_images") or raw.get("images") or []),
-            "location": raw.get("location") or "",
-            "rating": raw.get("rating") if isinstance(raw.get("rating"), (int, float)) else None,
-            "type": raw.get("type") or "boardinghouse",
-            "created_at": created_at,
-            "gender_male": bool(raw.get("gender_male")),
-            "gender_female": bool(raw.get("gender_female")),
-            "gender_both": bool(raw.get("gender_both")),
-            "teaser_video": raw.get("teaser_video") or raw.get("video") or None,
-            # include other fields you need downstream
-        }
-        houses.append(safe)
-
-    if filter.lower() == "new":
-        houses.sort(key=lambda h: h.get("created_at", datetime.min), reverse=True)
-
-    total = len(houses)
-    start = (page - 1) * limit
-    end = min(start + limit, total)
-    paginated = houses[start:end]
-
-    homepage_data = []
-    for data in paginated:
-        images_list = [str(x) for x in (data.get("gallery_images") or []) if x]
-        legacy_image = data.get("cover_image") or (images_list[0] if images_list else None)
-        cover = str(legacy_image) if legacy_image else "https://via.placeholder.com/400x200"
-
-        gender = (
-            "mixed" if data.get("gender_both")
-            else "male" if data.get("gender_male")
-            else "female" if data.get("gender_female")
-            else "both"
-        )
-
-        try:
-            item_kwargs = {
-                "id": str(data.get("id", "")),
-                "name_boardinghouse": str(data.get("name", "Unnamed")),
-                "image": cover,
-                "cover_image": str(data.get("cover_image") or cover),
-                "gender": gender,
-                "location": str(data.get("location", "") or ""),
-                "rating": (data.get("rating") if isinstance(data.get("rating"), (int, float)) else None),
-                "type": str(data.get("type", "boardinghouse")),
-                "teaser_video": (str(data.get("teaser_video")) if data.get("teaser_video") else None),
-            }
-            # attach price if model expects it
-            if "price" in BoardingHouseHomepage.__fields__:
-                # compute lowest price defensively (example)
-                item_kwargs["price"] = "N/A"
-            homepage_data.append(BoardingHouseHomepage(**item_kwargs).dict())
-        except Exception:
-            logger.exception("Failed to build BoardingHouseHomepage for doc id=%s", data.get("id"))
-            continue
-
-    return {
-        "data": homepage_data,
-        "total": total,
-        "current_page": page,
-        "total_pages": (total + limit - 1) // limit,
-        "has_more": end < total,
-    }
+# Replace the existing handlers with this code in CUZ/HOME/user_routes.py
 
 # -------------------------
 # Default homepage (no scoped behavior)
@@ -165,12 +65,23 @@ async def get_home(
     filter: str = Query("all"),
     current_user: dict = Depends(get_current_user),
 ):
+    logger.debug("get_home called: university=%s region=%s student_id=%s page=%d limit=%d filter=%s",
+                 university, region, student_id, page, limit, filter)
     try:
+        # Step 1: determine effective uni and validate requester (against their own uni)
         uni = university or current_user.get("university")
-        validate_student_identity(uni, student_id)
+        logger.debug("Validating requester student_id=%s against user_uni=%s", student_id, uni)
+        try:
+            validate_student_identity(uni, student_id)
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("validate_student_identity unexpected error for uni=%s student_id=%s", uni, student_id)
+            raise HTTPException(status_code=500, detail="Error validating student identity")
 
-        # Determine universities for broad/global queries
+        # Step 2: determine universities for query
         if region:
+            logger.debug("Region provided: %s", region)
             if region not in REGIONS:
                 raise HTTPException(status_code=400, detail="Invalid region")
             universities = REGIONS[region]
@@ -178,17 +89,34 @@ async def get_home(
             universities = [university]
         else:
             universities = [uni]
+        logger.debug("Universities to query: %s", universities)
 
+        # Step 3: run global query safely (array_contains_any) or fallback
         boardinghouses_docs = []
         if universities:
             if len(universities) > 10:
                 raise HTTPException(status_code=400, detail="Too many universities in query; reduce to 10 or fewer")
-            boardinghouses_docs = safe_array_contains_any(db.collection("BOARDINGHOUSES"), "universities", universities)
+            try:
+                logger.debug("Querying BOARDINGHOUSES with universities=%s", universities)
+                boardinghouses_docs = safe_array_contains_any(db.collection("BOARDINGHOUSES"), "universities", universities)
+                logger.debug("Global query returned %d docs", len(boardinghouses_docs) if boardinghouses_docs is not None else 0)
+            except HTTPException:
+                raise
+            except Exception:
+                logger.exception("Global BOARDINGHOUSES query failed for universities=%s", universities)
+                raise HTTPException(status_code=500, detail="Error querying boardinghouses")
 
-        # fallback to scoped HOME if global returned nothing
+        # Step 4: fallback to scoped HOME/{uni}/BOARDHOUSE if global returned nothing
         if not boardinghouses_docs:
-            boardinghouses_docs = db.collection("HOME").document(uni).collection("BOARDHOUSE").limit(100).get()
+            try:
+                logger.debug("Falling back to HOME/%s/BOARDHOUSE (limit=100)", uni)
+                boardinghouses_docs = db.collection("HOME").document(uni).collection("BOARDHOUSE").limit(100).get()
+                logger.debug("Scoped fallback returned %d docs", len(boardinghouses_docs) if boardinghouses_docs is not None else 0)
+            except Exception:
+                logger.exception("Scoped fallback query failed for HOME/%s/BOARDHOUSE", uni)
+                raise HTTPException(status_code=500, detail="Error querying scoped boardinghouses")
 
+        # Step 5: normalize and build response (uses shared helper)
         return normalize_and_build_response(boardinghouses_docs, page, limit, filter)
 
     except HTTPException:
@@ -196,6 +124,7 @@ async def get_home(
     except Exception:
         logger.exception("Unhandled error in get_home")
         raise HTTPException(status_code=500, detail="Error fetching homepage data")
+
 
 # -------------------------
 # Scoped endpoint (called by dropdown)
@@ -208,9 +137,12 @@ async def get_home_scoped(
     filter: str = Query("all"),
     current_user: dict = Depends(get_current_user),
 ):
+    logger.debug("get_home_scoped called: selected_uni=%s requester_uni=%s student_id=%s page=%d limit=%d filter=%s",
+                 university, current_user.get("university"), student_id, page, limit, filter)
     try:
-        # Validate the requesting student against their own university (allow browsing other universities)
+        # Step 1: validate requester against their own university (allow browsing other unis)
         user_uni = current_user.get("university")
+        logger.debug("Validating requester student_id=%s against user_uni=%s", student_id, user_uni)
         try:
             validate_student_identity(user_uni, student_id)
         except HTTPException:
@@ -219,11 +151,12 @@ async def get_home_scoped(
             logger.exception("validate_student_identity unexpected error for uni=%s student_id=%s", user_uni, student_id)
             raise HTTPException(status_code=500, detail="Error validating student identity")
 
-        # Ensure the selected university exists (basic check)
-        # If you want a stricter check, you can verify HOME/{university} exists
+        # Step 2: ensure selected university exists (HOME doc)
         try:
             uni_ref = db.collection("HOME").document(university)
-            if not uni_ref.get().exists:
+            exists = uni_ref.get().exists
+            logger.debug("HOME/%s exists=%s", university, exists)
+            if not exists:
                 raise HTTPException(status_code=400, detail="Selected university not available")
         except HTTPException:
             raise
@@ -231,9 +164,28 @@ async def get_home_scoped(
             logger.exception("Error checking existence of HOME/%s", university)
             raise HTTPException(status_code=500, detail="Error validating selected university")
 
-        # Query the scoped HOME collection only
-        boardinghouses_docs = db.collection("HOME").document(university).collection("BOARDHOUSE").get()
+        # Step 3: check collection casing and presence
+        try:
+            bh_upper = db.collection("HOME").document(university).collection("BOARDHOUSE").limit(1).get()
+            bh_lower = db.collection("HOME").document(university).collection("boardinghouse").limit(1).get()
+            has_upper = bool(bh_upper)
+            has_lower = bool(bh_lower)
+            logger.debug("HOME/%s/BOARDHOUSE exists=%s; HOME/%s/boardinghouse exists=%s", university, has_upper, university, has_lower)
+            collection_name = "BOARDHOUSE" if has_upper else ("boardinghouse" if has_lower else "BOARDHOUSE")
+        except Exception:
+            logger.exception("Error checking BOARDHOUSE collection existence for %s", university)
+            raise HTTPException(status_code=500, detail="Error checking scoped collection")
 
+        # Step 4: query the chosen scoped collection
+        try:
+            logger.debug("Querying HOME/%s/%s for boardinghouses", university, collection_name)
+            boardinghouses_docs = db.collection("HOME").document(university).collection(collection_name).get()
+            logger.debug("Scoped query returned %d docs", len(boardinghouses_docs) if boardinghouses_docs is not None else 0)
+        except Exception:
+            logger.exception("Firestore query failed for HOME/%s/%s", university, collection_name)
+            raise HTTPException(status_code=500, detail="Error querying boardinghouses")
+
+        # Step 5: normalize and build response
         return normalize_and_build_response(boardinghouses_docs, page, limit, filter)
 
     except HTTPException:
@@ -242,6 +194,24 @@ async def get_home_scoped(
         logger.exception("Unhandled error in get_home_scoped")
         raise HTTPException(status_code=500, detail="Error fetching scoped homepage data")
 
+
+# -------------------------
+# Shared helper: safe array_contains_any (already present but ensure logging)
+def safe_array_contains_any(collection_ref, field, values):
+    logger.debug("safe_array_contains_any called with %d values: %s", len(values) if values else 0, values)
+    if not values:
+        logger.debug("safe_array_contains_any: empty values -> returning []")
+        return []
+    if len(values) > 10:
+        logger.warning("safe_array_contains_any: values length > 10 -> rejecting request")
+        raise HTTPException(status_code=400, detail="Too many values for array_contains_any; reduce to 10 or fewer")
+    try:
+        docs = collection_ref.where(field, "array_contains_any", values).get()
+        logger.debug("safe_array_contains_any: returned %d docs", len(docs) if docs is not None else 0)
+        return docs or []
+    except Exception:
+        logger.exception("Firestore array_contains_any failed for field=%s values=%s", field, values)
+        raise HTTPException(status_code=500, detail="Error querying boardinghouses")
 
 # ---------------------------
 # GET /home - single robust implementation (scope param supported)
