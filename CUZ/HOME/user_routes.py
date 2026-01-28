@@ -196,22 +196,101 @@ async def get_home_scoped(
 
 
 # -------------------------
-# Shared helper: safe array_contains_any (already present but ensure logging)
-def safe_array_contains_any(collection_ref, field, values):
-    logger.debug("safe_array_contains_any called with %d values: %s", len(values) if values else 0, values)
-    if not values:
-        logger.debug("safe_array_contains_any: empty values -> returning []")
-        return []
-    if len(values) > 10:
-        logger.warning("safe_array_contains_any: values length > 10 -> rejecting request")
-        raise HTTPException(status_code=400, detail="Too many values for array_contains_any; reduce to 10 or fewer")
-    try:
-        docs = collection_ref.where(field, "array_contains_any", values).get()
-        logger.debug("safe_array_contains_any: returned %d docs", len(docs) if docs is not None else 0)
-        return docs or []
-    except Exception:
-        logger.exception("Firestore array_contains_any failed for field=%s values=%s", field, values)
-        raise HTTPException(status_code=500, detail="Error querying boardinghouses")
+# -------------------------
+# Shared helper: normalize documents and build homepage response
+def normalize_and_build_response(boardinghouses_docs, page: int, limit: int, filter: str):
+    """
+    Normalize Firestore docs into the homepage response shape.
+    Defensive: skips malformed docs, normalizes created_at, computes cover image and gender.
+    """
+    houses = []
+    for doc in boardinghouses_docs or []:
+        try:
+            raw = doc.to_dict() or {}
+        except Exception:
+            logger.exception("Failed to parse Firestore doc id=%s", getattr(doc, "id", "<unknown>"))
+            continue
+
+        doc_id = getattr(doc, "id", raw.get("id", ""))
+        ca = raw.get("created_at")
+        try:
+            if hasattr(ca, "to_datetime"):
+                created_at = ca.to_datetime()
+            elif isinstance(ca, datetime):
+                created_at = ca
+            else:
+                created_at = datetime.utcnow()
+        except Exception:
+            logger.exception("created_at normalization failed for doc id=%s", doc_id)
+            created_at = datetime.utcnow()
+
+        safe = {
+            "id": str(doc_id),
+            "name": raw.get("name") or raw.get("name_boardinghouse") or "Unnamed",
+            "cover_image": raw.get("cover_image") or raw.get("image") or None,
+            "gallery_images": list(raw.get("gallery_images") or raw.get("images") or []),
+            "location": raw.get("location") or "",
+            "rating": raw.get("rating") if isinstance(raw.get("rating"), (int, float)) else None,
+            "type": raw.get("type") or "boardinghouse",
+            "created_at": created_at,
+            "gender_male": bool(raw.get("gender_male")),
+            "gender_female": bool(raw.get("gender_female")),
+            "gender_both": bool(raw.get("gender_both")),
+            "teaser_video": raw.get("teaser_video") or raw.get("video") or None,
+            # include other fields if needed
+        }
+        houses.append(safe)
+
+    # Apply filter
+    if filter and filter.lower() == "new":
+        houses.sort(key=lambda h: h.get("created_at", datetime.min), reverse=True)
+
+    # Pagination
+    total = len(houses)
+    start = (page - 1) * limit
+    end = min(start + limit, total)
+    paginated = houses[start:end]
+
+    homepage_data = []
+    for data in paginated:
+        images_list = [str(x) for x in (data.get("gallery_images") or []) if x]
+        legacy_image = data.get("cover_image") or (images_list[0] if images_list else None)
+        cover = str(legacy_image) if legacy_image else "https://via.placeholder.com/400x200"
+
+        gender = (
+            "mixed" if data.get("gender_both")
+            else "male" if data.get("gender_male")
+            else "female" if data.get("gender_female")
+            else "both"
+        )
+
+        try:
+            item_kwargs = {
+                "id": str(data.get("id", "")),
+                "name_boardinghouse": str(data.get("name", "Unnamed")),
+                "image": cover,
+                "cover_image": str(data.get("cover_image") or cover),
+                "gender": gender,
+                "location": str(data.get("location", "") or ""),
+                "rating": (data.get("rating") if isinstance(data.get("rating"), (int, float)) else None),
+                "type": str(data.get("type", "boardinghouse")),
+                "teaser_video": (str(data.get("teaser_video")) if data.get("teaser_video") else None),
+            }
+            # attach price if model expects it
+            if "price" in BoardingHouseHomepage.__fields__:
+                item_kwargs["price"] = data.get("price", None) or "N/A"
+            homepage_data.append(BoardingHouseHomepage(**item_kwargs).dict())
+        except Exception:
+            logger.exception("Failed to build BoardingHouseHomepage for doc id=%s", data.get("id"))
+            continue
+
+    return {
+        "data": homepage_data,
+        "total": total,
+        "current_page": page,
+        "total_pages": (total + limit - 1) // limit if limit else 0,
+        "has_more": end < total,
+    }
 
 # ---------------------------
 # GET /home - single robust implementation (scope param supported)
