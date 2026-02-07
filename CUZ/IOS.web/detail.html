@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Boarding House Detail</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- App Bar -->
+  <header class="app-bar">
+    <h1>Boarding House Detail</h1>
+  </header>
+
+  <!-- Gallery -->
+  <section class="gallery">
+    <div class="gallery-slider"><!-- populated by JS --></div>
+    <div class="page-indicator">0/0</div>
+    <div class="dots"><!-- populated by JS --></div>
+  </section>
+
+  <!-- Name + Location -->
+  <section class="info">
+    <h2 class="house-name"><!-- populated by JS --></h2>
+    <div class="location"><!-- populated by JS --></div>
+
+    <!-- Right-aligned circular action icons -->
+    <div class="actions">
+      <a href="#" class="action-icon phone">
+        <img src="assets/images/icons/phone-call.png" alt="Call Landlord">
+      </a>
+      <a href="#" class="action-icon google">
+        <img src="assets/images/icons/direction.png" alt="Google Maps">
+      </a>
+      <a href="#" class="action-icon yango">
+        <img src="assets/images/icons/yango.png" alt="Yango Ride">
+      </a>
+      <a href="#" class="action-icon bus">
+        <img src="assets/images/icons/bus.png" alt="Bus Stop">
+      </a>
+    </div>
+  </section>
+
+  <!-- Space Overview -->
+  <section class="card">
+    <h3>Space Overview</h3>
+    <p class="space-description"><!-- populated by JS --></p>
+  </section>
+
+  <!-- Conditions -->
+  <section class="card">
+    <h3>Conditions</h3>
+    <p class="conditions"><!-- populated by JS --></p>
+  </section>
+
+  <!-- Room Status Legend -->
+<section class="legend">
+  <h3>Room status legend</h3>
+  <div class="legend-badges">
+    <div class="legend-badge available">AVAILABLE</div>
+    <div class="legend-badge unavailable">UNAVAILABLE</div>
+    <div class="legend-badge not-supported">NOT SUPPORTED</div>
+  </div>
+
+  <div class="legend-definitions">
+    <div class="definition-card">
+      <p><strong>Available</strong> — This room type currently has one or more spaces open. You can request or reserve a space for this room type.</p>
+    </div>
+    <div class="definition-card">
+      <p><strong>Unavailable</strong> — This room type is currently full. No spaces are available right now; check back later or contact the landlord for waitlist options.</p>
+    </div>
+    <div class="definition-card">
+      <p><strong>Not supported</strong> — This boarding house does not offer the specified room type. The label indicates the room configuration is not provided by this property.</p>
+    </div>
+  </div>
+</section>
+
+
+  <!-- Room Types Grid -->
+  <section class="rooms">
+    <h3>ROOM TYPES</h3>
+    <div class="grid"><!-- populated by JS --></div>
+  </section>
+
+  <!-- Amenities -->
+  <section class="amenities">
+    <h3>AMENITIES</h3>
+    <ul class="amenities-list"><!-- populated by JS --></ul>
+  </section>
+
+  <!-- Link to your JS file -->
+  <script src="js/detail.js"></script>
+</body>
+</html>

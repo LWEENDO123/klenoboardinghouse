@@ -1,0 +1,394 @@
+/* ========================================================= */
+/* Global reset */
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #fff;
+}
+
+/* ========================================================= */
+/* ---------- Signup/Login Form ---------- */
+.container {
+  max-width: 400px;
+  margin: auto;
+  padding: 20px;
+}
+
+h1 {
+  text-align: center;
+  color: #66D4FF;
+}
+
+form input,
+form select,
+form button {
+  width: 100%;
+  padding: 12px;
+  margin: 8px 0;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  box-sizing: border-box;
+}
+
+form button {
+  background: #66D4FF;
+  color: #fff;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+form button:hover {
+  background: #4bbbe0; /* subtle hover effect */
+}
+
+/* ========================================================= */
+/* ---------- Homepage Header ---------- */
+.brand-header {
+  background: #66D4FF;
+  color: white;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ---------- Filters ---------- */
+.filters {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+}
+
+.filters .filter {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 20px;
+  background: #eee;
+  cursor: pointer;
+}
+
+.filters .filter.active {
+  background: #66D4FF;
+  color: white;
+}
+
+/* ---------- Listings ---------- */
+.house-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.house-card {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+
+.house-card img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.house-card .info {
+  position: absolute;
+  bottom: 0;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  width: 100%;
+  padding: 8px;
+}
+
+.house-card .info h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.house-card .info p {
+  margin: 0;
+  font-size: 12px;
+}
+
+/* ---------- Loader ---------- */
+.loader {
+  text-align: center;
+  padding: 20px;
+  display: none;
+}
+
+/* ========================================================= */
+/* ---------- Detail Page ---------- */
+.app-bar {
+  background: #66D4FF;
+  color: white;
+  padding: 12px;
+  text-align: center;
+}
+
+.gallery {
+  position: relative;
+  height: 260px;
+  overflow: hidden;
+}
+
+.gallery-slider {
+  display: flex;
+  transition: transform 0.3s ease;
+}
+
+.slide {
+  min-width: 100%;
+  height: 260px;
+}
+
+.slide img,
+.slide video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.page-indicator {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.dots {
+  text-align: center;
+  margin-top: 6px;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin: 0 4px;
+  background: #ccc;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.dot.active {
+  background: #66D4FF;
+}
+
+/* ---------- Info ---------- */
+.info {
+  padding: 16px;
+}
+
+.house-name {
+  font-size: 22px;
+  font-weight: bold;
+  margin: 0 0 8px;
+}
+
+.location {
+  display: flex;
+  align-items: center;
+  color: #555;
+  font-size: 14px;
+}
+
+.contact p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+/* ---------- Cards (Space Overview, Conditions, Voice Notes) ---------- */
+.card {
+  margin: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f9f9f9;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card h3 {
+  margin-top: 0;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+/* ---------- Room Status Legend ---------- */
+.legend {
+  margin: 16px;
+}
+
+.legend h3 {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 12px;
+}
+
+.legend-badges {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.legend-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.legend-badge.available { background: green; }
+.legend-badge.unavailable { background: red; }
+.legend-badge.not-supported { background: #555; }
+
+.legend-definitions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.definition-card {
+  background: #f9f9f9;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.definition-card p {
+  margin: 0;
+  font-size: 13px;
+  color: #333;
+  line-height: 1.4;
+}
+
+
+/* ---------- Room Types Grid ---------- */
+.rooms {
+  padding: 16px;
+}
+
+.rooms h3 {
+  margin-top: 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.room-card {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+.room-card img {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+}
+
+.room-info {
+  padding: 10px;
+  text-align: left;
+}
+
+.room-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.room-type {
+  font-size: 14px;
+  font-weight: bold;
+  margin: 0;
+  color: #333;
+}
+
+.room-price {
+  font-size: 13px;
+  color: #666;
+  margin: 6px 0 0;
+}
+
+.room-card .badge {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 16px;
+}
+
+/* ---------- Amenities ---------- */
+.amenities {
+  padding: 16px;
+}
+
+.amenities h3 {
+  margin-top: 0;
+}
+
+.amenities ul {
+  list-style: none;
+  padding: 0;
+}
+
+.amenities li {
+  margin: 6px 0;
+  font-size: 13px;
+}
+
+/* ---------- Action Icons ---------- */
+.actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.action-icon img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.action-icon img:hover {
+  transform: scale(1.1);
+}
+
+/* ========================================================= */
+/* ---------- Responsive tweaks for iPhone screens ---------- */
+@media (max-width: 480px) {
+  .house-name {
+    font-size: 20px;
+  }
+  .room-card img {
+    height: 120px;
+  }
+  .room-type {
+    font-size: 13px;
+  }
+  .room-price {
+    font-size: 12px;
+  }
+  .action-icon img {
+    width: 36px;
+    height: 36px;
+  }
+}

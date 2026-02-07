@@ -1,90 +1,136 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict, Any
 from datetime import datetime
 
 # ---------------------------
-# Model for detailed view when a boarding house is clicked
+# Unified MediaItem model
 # ---------------------------
-
-class BoardingHouseSummary(BaseModel):
-    name: str
-
-    # Room type images, prices, availability
-    image_12: Optional[str] = None
-    price_12: Optional[str] = None
-    sharedroom_12: Optional[str] = None
-
-    image_6: Optional[str] = None
-    price_6: Optional[str] = None
-    sharedroom_6: Optional[str] = None
-
-    image_5: Optional[str] = None
-    price_5: Optional[str] = None
-    sharedroom_5: Optional[str] = None
-
-    image_4: Optional[str] = None
-    price_4: Optional[str] = None
-    sharedroom_4: Optional[str] = None
-
-    image_3: Optional[str] = None
-    price_3: Optional[str] = None
-    sharedroom_3: Optional[str] = None
-
-    image_2: Optional[str] = None
-    price_2: Optional[str] = None
-    sharedroom_2: Optional[str] = None
-
-    image_1: Optional[str] = None
-    price_1: Optional[str] = None
-    singleroom: Optional[str] = None
-
-    # Apartment fields
-    image_apartment: Optional[str] = None
-    price_apartment: Optional[str] = None
-    apartment: Optional[str] = None
-
-    # ✅ Media fields
-    gallery_images: List[str] = []
-    videos: List[str] = []
-    voice_notes: List[str] = []
-
-    # ✅ New field: space availability description
-    space_description: str = Field(
-        default="Kleno will update you when number of spaces is available.",
-        description="Text describing the number of available spaces or a fallback message"
-    )
-
-    # ✅ Landlord conditions/standards
-    conditions: Optional[str] = Field(
-        default=None,
-        description="Brief description of landlord’s standards and conditions"
-    )
-
-    # Other metadata
-    amenities: List[str]
-    location: Optional[str] = None
-    GPS_coordinates: Optional[List[float]] = None
-    yango_coordinates: Optional[List[float]] = None
+class MediaItem(BaseModel):
+    type: str  # "image" or "video"
+    url: str
+    thumbnail_url: Optional[str] = None
+    caption: Optional[str] = None
 
     class Config:
         extra = "forbid"
 
 
+# ---------------------------
+# Model for creating boarding houses (POST)
+# ---------------------------
+class BoardingHouseCreate(BaseModel):
+    name: str
+    university: str
+
+    # Room images, prices, statuses
+    image_12: Optional[str] = None
+    price_12: Optional[str] = None
+    sharedroom_12: Optional[str] = None
+    image_6: Optional[str] = None
+    price_6: Optional[str] = None
+    sharedroom_6: Optional[str] = None
+    image_5: Optional[str] = None
+    price_5: Optional[str] = None
+    sharedroom_5: Optional[str] = None
+    image_4: Optional[str] = None
+    price_4: Optional[str] = None
+    sharedroom_4: Optional[str] = None
+    image_3: Optional[str] = None
+    price_3: Optional[str] = None
+    sharedroom_3: Optional[str] = None
+    image_2: Optional[str] = None
+    price_2: Optional[str] = None
+    sharedroom_2: Optional[str] = None
+    image_1: Optional[str] = None
+    price_1: Optional[str] = None
+    singleroom: Optional[str] = None
+
+    image_apartment: Optional[str] = None
+    price_apartment: Optional[str] = None
+    apartment: Optional[str] = None
+
+    cover_image: Optional[str] = Field(default=None, description="Primary cover image URL for the listing")
+    gallery: List[MediaItem] = Field(default_factory=list, description="List of gallery media items (images and videos)")
+
+    voice_notes: List[str] = Field(default_factory=list)
+    space_description: str = Field(default="Kleno will update you when number of spaces is available.")
+    conditions: Optional[str] = Field(default=None)
+    amenities: List[str] = Field(default_factory=list)
+    location: Optional[str] = None
+    GPS_coordinates: Optional[List[float]] = None
+    yango_coordinates: Optional[List[float]] = None
+    phone_number: Optional[str] = Field(default=None)
+
+    class Config:
+        extra = "forbid"
 
 
-# Model for homepage display (sorted data with lowest price)
+# ---------------------------
+# Model for detailed view (GET)
+# ---------------------------
+class BoardingHouseSummary(BaseModel):
+    id: str
+    name: str
+
+    cover_image: Optional[str] = None
+    gallery: List[MediaItem] = Field(default_factory=list)
+
+    # Room prices
+    price_1: Optional[str] = None
+    price_2: Optional[str] = None
+    price_3: Optional[str] = None
+    price_4: Optional[str] = None
+    price_5: Optional[str] = None
+    price_6: Optional[str] = None
+    price_12: Optional[str] = None
+    price_apartment: Optional[str] = None
+
+    # Room statuses
+    singleroom: Optional[str] = None
+    sharedroom_2: Optional[str] = None
+    sharedroom_3: Optional[str] = None
+    sharedroom_4: Optional[str] = None
+    sharedroom_5: Optional[str] = None
+    sharedroom_6: Optional[str] = None
+    sharedroom_12: Optional[str] = None
+    apartment: Optional[str] = None
+
+    # Room images
+    image_1: Optional[str] = None
+    image_2: Optional[str] = None
+    image_3: Optional[str] = None
+    image_4: Optional[str] = None
+    image_5: Optional[str] = None
+    image_6: Optional[str] = None
+    image_12: Optional[str] = None
+    image_apartment: Optional[str] = None
+
+    amenities: List[str] = Field(default_factory=list)
+    location: Optional[str] = None
+    conditions: Optional[str] = None
+    space_description: Optional[str] = None
+    phone_number: Optional[str] = None
+
+    # ✅ Added fields
+    GPS_coordinates: Optional[List[float]] = None
+    yango_coordinates: Optional[List[float]] = None
+    voice_notes: List[str] = Field(default_factory=list)
+
+    class Config:
+        extra = "forbid"
+
+# ---------------------------
+# Model for homepage display
 # ---------------------------
 class BoardingHouseHomepage(BaseModel):
     id: str
     name_boardinghouse: str
-    price: str
-    image: str
+    image: str  # legacy single image field
+    cover_image: Optional[str] = None
     gender: Literal["male", "female", "mixed", "both"]
     location: Optional[str] = None
     rating: Optional[float] = None
-    type: Optional[str] = None  # "boardinghouse" or "apartment"
-
-    # ✅ Optional teaser video
+    type: Optional[str] = None
     teaser_video: Optional[str] = None
 
     class Config:
@@ -92,15 +138,15 @@ class BoardingHouseHomepage(BaseModel):
 
 
 # ---------------------------
-# Model for adding/editing boarding houses
+# Model for landlord editing
 # ---------------------------
-
-
 class BoardingHouse(BaseModel):
     name: str
     location: str
     universities: List[str]
     landlord_id: str
+
+    phone_number: Optional[str] = None
 
     # Prices
     price_12: Optional[str] = None
@@ -113,14 +159,14 @@ class BoardingHouse(BaseModel):
     price_apartment: Optional[str] = None
 
     # Availability
-    sharedroom_12: Optional[str] = Field(None, example="available")
-    sharedroom_6: Optional[str] = Field(None, example="available")
-    sharedroom_5: Optional[str] = Field(None, example="available")
-    sharedroom_4: Optional[str] = Field(None, example="available")
-    sharedroom_3: Optional[str] = Field(None, example="available")
-    sharedroom_2: Optional[str] = Field(None, example="available")
-    singleroom: Optional[str] = Field(None, example="available")
-    apartment: Optional[str] = Field(None, example="available")
+    sharedroom_12: Optional[str] = None
+    sharedroom_6: Optional[str] = None
+    sharedroom_5: Optional[str] = None
+    sharedroom_4: Optional[str] = None
+    sharedroom_3: Optional[str] = None
+    sharedroom_2: Optional[str] = None
+    singleroom: Optional[str] = None
+    apartment: Optional[str] = None
 
     # Images
     image_12: Optional[str] = None
@@ -132,51 +178,31 @@ class BoardingHouse(BaseModel):
     image_1: Optional[str] = None
     image_apartment: Optional[str] = None
 
-    # ✅ General gallery & media
-    images: List[str] = []
-    videos: List[str] = []       # Railway URLs for video tours
-    voice_notes: List[str] = []  # Railway URLs for audio notes
+    cover_image: Optional[str] = None
+    images: List[str] = Field(default_factory=list)
+    videos: List[str] = Field(default_factory=list)
+    voice_notes: List[str] = Field(default_factory=list)
 
-    # Coordinates
+    # ✅ Optional gallery for structured media
+    gallery: Optional[List[MediaItem]] = Field(
+        default=None,
+        description="Structured gallery of images and videos (optional)"
+    )
+
     GPS_coordinates: Optional[List[float]] = None
     yango_coordinates: Optional[List[float]] = None
 
-    # Gender restrictions
     gender_male: Optional[bool] = False
     gender_female: Optional[bool] = False
     gender_both: Optional[bool] = False
 
-    # Amenities and rating
-    amenities: List[str]
+    amenities: List[str] = Field(default_factory=list)
     rating: Optional[float] = None
+    conditions: Optional[str] = None
+    space_description: Optional[str] = None
 
-    # ✅ New field: landlord conditions/standards
-    conditions: Optional[str] = Field(
-        None,
-        description="Brief description of landlord’s standards and conditions"
-    )
-
-    # ✅ New field: space availability description
-    space_description: Optional[str] = Field(
-        default="Kleno will update you on the number of space is available. soon!",
-        description="Text describing the number of available spaces or a fallback message"
-    )
-
-    # ✅ Bus stop navigation
-    public_T: Optional[dict] = Field(
-        default=None,
-        example={
-            "coordinates": [-15.4167, 28.2833],
-            "instructions": "Take a bus to Town, drop off at Downtown, then walk to the university."
-        },
-        description="Bus stop navigation info"
-    )
-
-    created_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="Timestamp when the boarding house was created"
-    )
+    public_T: Optional[Dict[str, Any]] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Config:
         extra = "forbid"
-

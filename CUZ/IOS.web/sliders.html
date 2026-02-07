@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Kleno Intro Sliders</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* Slider-specific styles */
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+    }
+
+    .slide {
+      display: none;
+      height: 100vh;
+      color: white;
+      padding: 28px;
+      box-sizing: border-box;
+      text-align: center;
+    }
+
+    .slide.active {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .slide h2 {
+      font-size: 32px;
+      font-weight: bold;
+      margin-bottom: 20px;
+    }
+
+    .slide p {
+      font-size: 16px;
+      color: rgba(255,255,255,0.8);
+      line-height: 1.5;
+      white-space: pre-line;
+    }
+
+    .controls {
+      position: absolute;
+      bottom: 28px;
+      left: 0;
+      right: 0;
+      text-align: center;
+    }
+
+    .dots {
+      margin-bottom: 12px;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin: 0 6px;
+      background: white;
+      border-radius: 8px;
+      opacity: 0.5;
+      transition: all 0.25s ease;
+    }
+
+    .dot.active {
+      width: 20px;
+      opacity: 1;
+      box-shadow: 0 0 4px rgba(0,0,0,0.3);
+    }
+
+    .buttons {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 24px;
+    }
+
+    .buttons button {
+      padding: 12px 20px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .btn-skip, .btn-back {
+      background: transparent;
+      color: white;
+    }
+
+    .btn-next {
+      background: white;
+      color: black;
+    }
+
+    .top-skip {
+      position: absolute;
+      top: 24px;
+      right: 16px;
+      color: white;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Slides -->
+  <div id="slide0" class="slide active" style="background:#66D4FF;">
+    <h2>Welcome to Kleno</h2>
+    <p>🏠 Your gateway to smarter student living and seamless boarding management.
+
+Whether you're a student searching for a place that fits your budget and lifestyle, 
+or a landlord looking to fill empty rooms with ease.</p>
+  </div>
+
+  <div id="slide1" class="slide" style="background:#4BC0E8;">
+    <h2>Smart & Transparent</h2>
+    <p>Kleno bridges the gap between students and landlords.
+
+Students enjoy real-time availability and transparent listings, 
+while landlords easily manage inquiries and spaces.</p>
+  </div>
+
+  <div id="slide2" class="slide" style="background:#2EA6D1;">
+    <h2>Manage & Simplify</h2>
+    <p>Landlords gain visibility and control with modern tools — no more guesswork or delays.
+
+Let's make finding and managing boarding simpler, faster, and fairer for everyone.</p>
+  </div>
+
+  <!-- Top-right Skip -->
+  <div class="top-skip" onclick="skipIntro()">Skip</div>
+
+  <!-- Bottom controls -->
+  <div class="controls">
+    <div class="dots" id="dots"></div>
+    <div class="buttons">
+      <button class="btn-back" onclick="prevSlide()">Back</button>
+      <button class="btn-next" onclick="nextSlide()" id="nextBtn">Next</button>
+    </div>
+  </div>
+
+  <script>
+    const slides = document.querySelectorAll('.slide');
+    const dotsContainer = document.getElementById('dots');
+    let currentSlide = 0;
+
+    function renderDots() {
+      dotsContainer.innerHTML = '';
+      slides.forEach((_, i) => {
+        const dot = document.createElement('span');
+        dot.className = 'dot' + (i === currentSlide ? ' active' : '');
+        dotsContainer.appendChild(dot);
+      });
+    }
+
+    function showSlide(index) {
+      slides.forEach((s, i) => {
+        s.classList.toggle('active', i === index);
+      });
+      currentSlide = index;
+      renderDots();
+      document.getElementById('nextBtn').textContent = 
+        currentSlide === slides.length - 1 ? 'Get Started' : 'Next';
+    }
+
+    function nextSlide() {
+      if (currentSlide < slides.length - 1) {
+        showSlide(currentSlide + 1);
+      } else {
+        // Mark intro as seen and go to login
+        localStorage.setItem('introSeen', 'true');
+        window.location.href = 'login.html';
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 0) {
+        showSlide(currentSlide - 1);
+      }
+    }
+
+    function skipIntro() {
+      localStorage.setItem('introSeen', 'true');
+      window.location.href = 'login.html';
+    }
+
+    // Initialize
+    renderDots();
+    showSlide(0);
+  </script>
+</body>
+</html>

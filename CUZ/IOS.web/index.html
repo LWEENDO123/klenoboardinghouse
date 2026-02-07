@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Splash Screen</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* Splash-specific styles */
+    .splash-container {
+      background: #66D4FF;
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+
+    .splash-title {
+      font-size: 96px;
+      font-weight: 100;
+      text-shadow: -19px 17px 10px rgba(0,0,0,0.26);
+    }
+
+    .splash-footer {
+      position: absolute;
+      bottom: 28px;
+      left: 0;
+      right: 0;
+      text-align: center;
+    }
+
+    .beta-label {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.12);
+      font-weight: bold;
+      letter-spacing: 1.5px;
+    }
+
+    .beta-text {
+      margin-top: 8px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.7);
+    }
+  </style>
+</head>
+<body>
+  <div class="splash-container">
+    <div class="splash-title">KLENO</div>
+
+    <div class="splash-footer">
+      <div class="beta-label">BETA</div>
+      <div class="beta-text">This app is in BETA — features may change.</div>
+    </div>
+  </div>
+
+  <script>
+    // Redirect after 3 seconds
+    setTimeout(() => {
+      // Decide where to go next
+      // For now, always go to login.html
+      window.location.href = "login.html";
+      // If you want to show sliders first:
+      // window.location.href = "sliders.html";
+    }, 3000);
+  </script>
+</body>
+</html>

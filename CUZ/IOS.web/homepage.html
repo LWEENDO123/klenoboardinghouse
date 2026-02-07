@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Kleno Boarding Houses</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="brand-header">
+    <div class="menu">☰</div>
+    <h1>KLENO Boarding Houses</h1>
+    <select id="universitySelect">
+      <option value="">My University</option>
+      <option value="CUZM">Cavendish Main Campus</option>
+      <option value="CUZMED">Cavendish Medical Campus</option>
+      <option value="UNILUSM">UNILUS Main Campus</option>
+      <option value="CHRESO">Chreso University</option>
+      <option value="UNZAM">UNZA Main Campus</option>
+    </select>
+  </header>
+
+  <!-- Filters -->
+  <div class="filters">
+    <button class="filter active" data-filter="all">All</button>
+    <button class="filter" data-filter="new">New</button>
+  </div>
+
+  <!-- Title -->
+  <div class="title">
+    <h2>Listings</h2>
+  </div>
+
+  <!-- Dynamic House Cards -->
+  <main class="house-list"><!-- populated by JS --></main>
+
+  <!-- Loader -->
+  <div id="loader" class="loader">Loading...</div>
+
+  <script src="js/homepage.js"></script>
+</body>
+</html>

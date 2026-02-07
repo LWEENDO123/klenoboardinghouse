@@ -5,6 +5,11 @@ from fastapi import HTTPException
 from CUZ.core.firebase import db  # Shared Firestore client from core (no re-init)
   # Shared Firestore client from core (no re-init)
 
+
+
+
+from datetime import datetime, timedelta
+
 logger = logging.getLogger("app.firebase")
 logger.setLevel(logging.INFO)
 
@@ -133,6 +138,102 @@ async def user_exists(university: str, email: str, phone: str, first_name: str, 
     if list(landlord_query): return True
 
     return False
+
+
+
+
+
+
+logger = logging.getLogger("app.firebase")
+
+async def update_user_password(email: str, hashed_pw: str, university: str | None = None) -> bool:
+    """
+    Update a user's password stored at USERS/{university}/students/{id}.
+    - If `university` is provided, search only that university's students collection first.
+    - Otherwise iterate all universities under USERS and update the first matching student.
+    Returns True on success, raises HTTPException(404) if not found.
+    """
+    try:
+        def _update_iterable(iterable):
+            updated = False
+            for doc in iterable:
+                # doc.reference is the DocumentReference for the matched document
+                doc.reference.update({
+                    "password": hashed_pw,
+                    "updated_at": datetime.utcnow().isoformat()
+                })
+                logger.info("update_user_password: updated password for email=%s at %s", email, doc.reference.path)
+                updated = True
+            return updated
+
+        users_root = db.collection("USERS")
+
+        # 1) If university provided, check that university's students collection first
+        if university:
+            students_ref = users_root.document(university).collection("students")
+            q = students_ref.where("email", "==", email).limit(1).stream()
+            if _update_iterable(q):
+                return True
+
+        # 2) Iterate all universities under USERS and search students subcollection
+        for uni_doc in users_root.stream():
+            uni_id = uni_doc.id
+            students_ref = users_root.document(uni_id).collection("students")
+            q = students_ref.where("email", "==", email).limit(1).stream()
+            if _update_iterable(q):
+                return True
+
+        # Not found
+        logger.warning("update_user_password: user not found for email=%s", email)
+        raise HTTPException(status_code=404, detail="User not found")
+
+    except HTTPException:
+        # re-raise HTTPExceptions so caller can handle them
+        raise
+    except Exception as e:
+        logger.exception("update_user_password: unexpected error for email=%s: %s", email, e)
+        raise HTTPException(status_code=500, detail=f"Error updating password: {str(e)}")
+
+
+
+
+
+
+
+RESET_COLLECTION = "password_resets"
+
+async def save_reset_code(email: str, code: str, expires: datetime):
+    """
+    Save reset code with expiry in Firestore.
+    """
+    doc_ref = db.collection(RESET_COLLECTION).document(email)
+    doc_ref.set({
+        "code": code,
+        "expires": expires.isoformat()
+    }, merge=True)
+
+async def get_reset_code(email: str):
+    """
+    Retrieve reset code if not expired.
+    """
+    doc = db.collection(RESET_COLLECTION).document(email).get()
+    if not doc.exists:
+        return None
+    data = doc.to_dict()
+    expires = datetime.fromisoformat(data["expires"])
+    if datetime.utcnow() > expires:
+        # Expired
+        await clear_reset_code(email)
+        return None
+    return data["code"]
+
+async def clear_reset_code(email: str):
+    """
+    Remove reset code after use or expiry.
+    """
+    db.collection(RESET_COLLECTION).document(email).delete()
+
+
 
   
 

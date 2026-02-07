@@ -1,31 +1,10 @@
-#CUZ/routers/directions.py
-from fastapi import APIRouter, Query, HTTPException
+# CUZ/routers/directions.py
+from fastapi import APIRouter, Query
 from typing import Optional
 import math
+from .region_router import recalculate_origin, resolve_region_offset
 
 router = APIRouter(prefix="/directions", tags=["Directions"])
-
-# 🔹 Sample region centers (you’ll replace with real values later)
-REGION_CENTERS = {
-    "lusaka": (-15.4167, 28.2833),
-    "chongwe": (-15.3292, 28.6820),
-    "matero": (-15.3885, 28.2478),
-    "kafue": (-15.7700, 28.1830),
-}
-
-def haversine(lat1, lon1, lat2, lon2):
-    """Calculate distance in km between two coordinates."""
-    R = 6371
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(math.radians(lat1))
-        * math.cos(math.radians(lat2))
-        * math.sin(dlon / 2) ** 2
-    )
-    return R * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
-
 
 @router.get("/google")
 def get_google_directions(
@@ -37,25 +16,30 @@ def get_google_directions(
 ):
     """
     Generate a Google Maps direction link.
-    If 'region' is provided, the route is recalculated through the region's center.
+    Regional anchor logic is applied internally (origin recalibration + destination drift correction),
+    but the returned link is always a clean origin → destination route.
     """
 
-    if region and region.lower() in REGION_CENTERS:
-        center_lat, center_lon = REGION_CENTERS[region.lower()]
-        distance_from_center = haversine(origin_lat, origin_lon, center_lat, center_lon)
+    # ✅ Apply origin recalibration (snap/fine‑tune relative to anchor if needed)
+    adj_origin_lat, adj_origin_lon = recalculate_origin(origin_lat, origin_lon, region)
 
-        # ✅ Recalculate origin via region center if far away (>5km)
-        if distance_from_center > 5:
-            print(f"Routing via region center: {region} ({center_lat}, {center_lon})")
-            origin_lat, origin_lon = center_lat, center_lon
+    # ✅ Apply destination drift correction
+    adj_dest_lat, adj_dest_lon = resolve_region_offset(region, dest_lat, dest_lon)
 
+    # ✅ Build clean Google Maps link (no visible waypoints)
     link = (
         f"https://www.google.com/maps/dir/?api=1"
-        f"&origin={origin_lat},{origin_lon}"
-        f"&destination={dest_lat},{dest_lon}"
+        f"&origin={adj_origin_lat},{adj_origin_lon}"
+        f"&destination={adj_dest_lat},{adj_dest_lon}"
         f"&travelmode=driving"
     )
-    return {"google_maps_url": link}
+
+    return {
+        "region": region or "direct",
+        "origin": [adj_origin_lat, adj_origin_lon],
+        "destination": [adj_dest_lat, adj_dest_lon],
+        "google_maps_url": link
+    }
 
 
 @router.get("/yango")
@@ -68,22 +52,27 @@ def get_yango_directions(
 ):
     """
     Generate a Yango Taxi deep link.
-    If 'region' is provided, use the region’s center as a middle-man for recalculation.
+    Regional anchor logic is applied internally (origin recalibration + destination drift correction),
+    but the returned link is always a clean origin → destination route.
     """
 
-    if region and region.lower() in REGION_CENTERS:
-        center_lat, center_lon = REGION_CENTERS[region.lower()]
-        distance_from_center = haversine(origin_lat, origin_lon, center_lat, center_lon)
+    # ✅ Apply origin recalibration
+    adj_origin_lat, adj_origin_lon = recalculate_origin(origin_lat, origin_lon, region)
 
-        # ✅ Recalculate via regional middle-man
-        if distance_from_center > 5:
-            print(f"Routing via Yango region center: {region} ({center_lat}, {center_lon})")
-            origin_lat, origin_lon = center_lat, center_lon
+    # ✅ Apply destination drift correction
+    adj_dest_lat, adj_dest_lon = resolve_region_offset(region, dest_lat, dest_lon)
 
+    # ✅ Build clean Yango deep link
     link = (
         f"yango://route?"
-        f"start-lat={origin_lat}&start-lon={origin_lon}"
-        f"&end-lat={dest_lat}&end-lon={dest_lon}"
+        f"start-lat={adj_origin_lat}&start-lon={adj_origin_lon}"
+        f"&end-lat={adj_dest_lat}&end-lon={adj_dest_lon}"
         f"&ref=proxy_location_app"
     )
-    return {"yango_url": link}
+
+    return {
+        "region": region or "direct",
+        "origin": [adj_origin_lat, adj_origin_lon],
+        "destination": [adj_dest_lat, adj_dest_lon],
+        "yango_url": link
+    }

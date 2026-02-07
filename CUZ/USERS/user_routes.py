@@ -3,11 +3,26 @@ from fastapi import (
     APIRouter, HTTPException, status, Depends,
     Request, Form, Header, Response,
 )
+import sib_api_v3_sdk
+from sib_api_v3_sdk.rest import ApiException
+import secrets # for generating secure random codes 
+from datetime import datetime, timedelta
+import os
+
+
+
 
 from jose import jwt, JWTError
 from datetime import timedelta
 from pydantic import EmailStr
 from fastapi.security import OAuth2PasswordRequestForm
+from .firebase import (
+    save_reset_code,
+    get_reset_code,
+    clear_reset_code,
+    update_user_password,   # <-- add this
+)
+
 
 # ✅ Project imports
 from CUZ.HOME.add_boardinghouse import CLUSTERS
@@ -367,7 +382,7 @@ async def login(
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         # ---------------------------
-        # Issue JWT access token
+        # Issue JWT access token (1 day expiry)
         # ---------------------------
         access_token = create_access_token(
             data={
@@ -377,8 +392,9 @@ async def login(
                 "user_id": user_data["user_id"],
                 "university": user_data.get("university"),
             },
-            expires_delta=timedelta(minutes=30),
+            expires_delta=timedelta(days=1),   # 🔹 now 1 day expiry
         )
+        logger.debug(f"Issued access token for user_id={user_data['user_id']} with 1 day expiry")
 
         # ---------------------------
         # Issue refresh token
@@ -392,6 +408,7 @@ async def login(
             ip,
             user_agent,
         )
+        logger.debug(f"Issued refresh token for user_id={user_data['user_id']}")
 
         # ---------------------------
         # Return both tokens
@@ -404,6 +421,7 @@ async def login(
             "role": user_data["role"],
             "user_id": user_data["user_id"],
             "university": user_data.get("university"),
+            "expires_in": 24 * 60 * 60   # 🔹 1 day in seconds
         }
 
     except HTTPException:
@@ -411,7 +429,6 @@ async def login(
     except Exception as e:
         logger.exception("Unexpected error during login")
         raise HTTPException(status_code=500, detail=f"Error logging in: {str(e)}")
-
 
 # ---------------------------
 # LOOKUPS
@@ -504,19 +521,21 @@ from jose import jwt, JWTError
 
 logger = logging.getLogger("uvicorn.error")
 
+from datetime import timedelta
+
 @router.post("/auth/refresh")
 @limit("10/minute")
 async def refresh_tokens(
     request: Request,
-    response: Response,                # <-- added here
+    response: Response,
     refresh_token: str = Form(...)
 ):
     try:
-        logger.debug(
-            f"Received refresh request from IP={request.client.host}, UA={request.headers.get('user-agent')}"
-        )
-        logger.debug(f"Raw refresh_token={refresh_token[:20]}...")  # log only prefix for safety
+        logger.debug("========== REFRESH TOKEN REQUEST ==========")
+        logger.debug(f"Received refresh request from IP={request.client.host}, UA={request.headers.get('user-agent')}")
+        logger.debug(f"Raw refresh_token (first 40 chars)={refresh_token[:40]}...")
 
+        # Decode JWT payload
         payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
         logger.debug(f"Decoded payload={payload}")
 
@@ -525,9 +544,7 @@ async def refresh_tokens(
         role = payload.get("role")
         university = payload.get("university")
 
-        logger.debug(
-            f"Extracted jti={jti}, user_id={user_id}, role={role}, university={university}"
-        )
+        logger.debug(f"Extracted jti={jti}, user_id={user_id}, role={role}, university={university}")
 
         if not all([jti, user_id, role, university]):
             logger.error("Missing fields in refresh token payload")
@@ -543,21 +560,27 @@ async def refresh_tokens(
         logger.debug(f"Rotating refresh token for user_id={user_id}")
         new_refresh = rotate_refresh_token(jti, user_id, role, university, ip, user_agent)
 
-        logger.debug("Creating new access token")
-        new_access = create_access_token({
-            "sub": payload.get("sub_email") or payload.get("sub"),
-            "role": role,
-            "premium": False,
-            "user_id": user_id,
-            "university": university,
-        })
+        logger.debug("Creating new access token (1 day expiry)")
+        new_access = create_access_token(
+            {
+                "sub": payload.get("sub_email") or payload.get("sub"),
+                "role": role,
+                "premium": False,
+                "user_id": user_id,
+                "university": university,
+            },
+            expires_delta=timedelta(days=1)   # 🔹 now 1 day expiry
+        )
 
-        logger.info(f"Successfully refreshed tokens for user_id={user_id}")
+        logger.info(f"✅ Successfully refreshed tokens for user_id={user_id}")
+        logger.debug(f"New access_token (first 40 chars)={new_access[:40]}...")
+        logger.debug(f"New refresh_token (first 40 chars)={new_refresh[:40]}...")
+
         return {
             "access_token": new_access,
             "refresh_token": new_refresh,
             "token_type": "bearer",
-            "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60
+            "expires_in": 24 * 60 * 60   # 🔹 1 day in seconds
         }
 
     except JWTError:
@@ -566,6 +589,7 @@ async def refresh_tokens(
     except Exception as e:
         logger.exception("Unexpected error during token refresh")
         raise HTTPException(status_code=500, detail=f"Error refreshing token: {str(e)}")
+
 
 
 # ---------------------------
@@ -631,4 +655,80 @@ async def ping():
     Frontend calls this every ~25 minutes to keep connection alive.
     """
     return {"message": "pong", "status": "ok"}
+
+
+
+
+# Load Brevo API key and sender details from Railway env vars
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY")
+BREVO_SENDER_NAME = os.environ.get("BREVO_SENDER_NAME", "KLENO")
+BREVO_SENDER_EMAIL = os.environ.get("BREVO_SENDER_EMAIL", "support@yourdomain.com")
+
+configuration = sib_api_v3_sdk.Configuration()
+configuration.api_key['api-key'] = BREVO_API_KEY
+
+
+@router.post("/forgot_password")
+async def forgot_password(email: EmailStr):
+    reset_code = secrets.token_hex(3)  # 6‑digit hex code
+    await save_reset_code(email, reset_code, expires=datetime.utcnow() + timedelta(minutes=10))
+
+    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
+    send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+        to=[{"email": email}],
+        sender={"name": BREVO_SENDER_NAME, "email": BREVO_SENDER_EMAIL},
+        subject="Password Reset Code",
+        html_content=f"<p>Your password reset code is <b>{reset_code}</b></p>"
+    )
+
+    try:
+        api_instance.send_transac_email(send_smtp_email)
+        return {"detail": "Reset code sent"}
+    except ApiException as e:
+        raise HTTPException(status_code=500, detail=f"Email send failed: {e}")
+
+
+@router.post("/reset_password")
+async def reset_password(email: EmailStr, code: str, new_password: str):
+    """
+    Reset password flow:
+    - validate reset code
+    - hash new password
+    - update user password in Firestore (students / landlords / union members)
+    - clear reset code
+    """
+    logger.info("reset_password: request for email=%s", email)
+    stored_code = await get_reset_code(email)
+    if not stored_code or stored_code != code:
+        logger.warning("reset_password: invalid or expired code for email=%s", email)
+        raise HTTPException(status_code=400, detail="Invalid or expired reset code")
+
+    try:
+        hashed_pw = get_password_hash(new_password)
+    except Exception as e:
+        logger.exception("reset_password: error hashing password for email=%s: %s", email, e)
+        raise HTTPException(status_code=500, detail="Error processing password")
+
+    try:
+        # update_user_password is implemented in firebase.py and imported above
+        updated = await update_user_password(email, hashed_pw)
+        if not updated:
+            logger.warning("reset_password: update_user_password returned falsy for email=%s", email)
+            raise HTTPException(status_code=404, detail="User not found")
+    except HTTPException:
+        # re-raise HTTPExceptions so FastAPI returns the intended status
+        raise
+    except Exception as e:
+        # Log full exception server-side for debugging
+        logger.exception("reset_password: failed to update password for %s: %s", email, e)
+        raise HTTPException(status_code=500, detail="Error updating password")
+
+    try:
+        await clear_reset_code(email)
+    except Exception as e:
+        # Non-fatal: log but still return success to user
+        logger.exception("reset_password: failed to clear reset code for %s: %s", email, e)
+
+    logger.info("reset_password: password updated successfully for email=%s", email)
+    return {"detail": "Password updated successfully"}
 

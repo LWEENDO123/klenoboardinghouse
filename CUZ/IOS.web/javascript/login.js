@@ -1,0 +1,40 @@
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value.trim();
+  const university = document.getElementById("university").value.trim();
+
+  const formData = new URLSearchParams();
+  formData.append("username", email);
+  formData.append("password", password);
+
+  try {
+    const res = await fetch(`https://klenoboardinghouse-production.up.railway.app/users/login?university=${university}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "x-api-key": "d17809df9e6c4e33801af1c5ee9d11da"
+      },
+      body: formData.toString()
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      document.getElementById("message").textContent = "Login successful!";
+      // Save tokens to localStorage for later API calls
+      localStorage.setItem("access_token", data.access_token);
+      localStorage.setItem("refresh_token", data.refresh_token);
+      localStorage.setItem("role", data.role);
+      localStorage.setItem("user_id", data.user_id);
+      localStorage.setItem("university", data.university);
+
+      // Redirect to dashboard/home
+      window.location.href = "homepage.html";
+    } else {
+      document.getElementById("message").textContent = data.detail || "Login failed.";
+    }
+  } catch (err) {
+    document.getElementById("message").textContent = "Error: " + err;
+  }
+});

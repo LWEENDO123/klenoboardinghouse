@@ -1,23 +1,33 @@
 # file: CUZ/main.py
 
-from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status, Query
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import asyncio
+# Standard library
+# Standard library
 import os
 import json
 import logging
+import asyncio
+import urllib.parse
 import hmac
 import hashlib
 from datetime import datetime
+
+# FastAPI core + responses
+from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse, Response
+
+# Third‑party
 from dateutil.relativedelta import relativedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pydantic import BaseModel
+from botocore.exceptions import ClientError
+from CUZ.yearbook.profile.storage import s3_client, RAILWAY_BUCKET
 
 # ------------------------------
 # Routers and auth
 # ------------------------------
 from CUZ.yearbook.profile.events import router as event_router
+from fastapi.staticfiles import StaticFiles
 from CUZ.Notification.notification import router as notification_router, notify_upcoming_events
 from CUZ.USERS.user_routes import router as user_router
 from CUZ.Available.checkboarding import router as available_router
@@ -28,7 +38,7 @@ from CUZ.HOME.user_routes import router as user_home_router
 from CUZ.Store.store import router as store_router
 from CUZ.ProxyLocation.fine_me import router as proxily_router
 from CUZ.core.security import get_current_user
-
+from CUZ.yearbook.profile.video import router as video_router
 
 # Payment modules
 from CUZ.payment.firestore_adapter import get_student_record, save_student_record
@@ -37,6 +47,7 @@ from CUZ.payment.payment_orchestrator import (
     check_and_update_premium_expiry,
     process_payout,
 )
+
 
 # Firebase bootstrap (Railway)
 logger = logging.getLogger("firebase.bootstrap")
@@ -202,6 +213,96 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     response.headers["Retry-After"] = str(exc.reset_in)
     return response
 
+
+import os
+
+# ------------------------------
+# Webhook (Lenco -> your app)
+# ------------------------------
+
+# Load secret from Railway environment variable
+WEBHOOK_SIGNING_SECRET = os.getenv(
+    "WEBHOOK_SIGNING_SECRET",
+    "dev-fallback-secret"  # optional fallback for local testing
+)
+
+POSSIBLE_SIGNATURE_HEADERS = [
+    "x-lenco-signature",
+    "lenco-signature",
+    "x-webhook-signature",
+    "x-signature",
+    "signature",
+]
+
+def _verify_webhook_signature(secret: str, body: bytes, header_value: str) -> bool:
+    if not header_value:
+        return False
+    if "=" in header_value and header_value.split("=", 1)[0].lower() in {"sha256", "sha1"}:
+        _, header_value = header_value.split("=", 1)
+    try:
+        computed = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(computed, header_value)
+    except Exception as e:
+        logger.exception("[WEBHOOK] signature verification error: %s", e)
+        return False
+
+@webhook_router.post("/lenco")
+async def lenco_webhook(request: Request):
+    try:
+        raw_body = await request.body()
+        header_sig = None
+        for hname in POSSIBLE_SIGNATURE_HEADERS:
+            val = request.headers.get(hname)
+            if val:
+                header_sig = val
+                break
+
+        if not header_sig:
+            logger.warning("[WEBHOOK] No signature header found. Rejecting.")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing signature header")
+
+        if not _verify_webhook_signature(WEBHOOK_SIGNING_SECRET, raw_body, header_sig):
+            logger.warning("[WEBHOOK] Signature mismatch.")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
+
+        try:
+            data = await request.json()
+        except Exception:
+            import json as _json
+            data = _json.loads(raw_body.decode("utf-8"))
+
+        transaction_id = data.get("id")
+        status_val = data.get("status")
+        metadata = data.get("metadata", {})
+
+        student_id = metadata.get("student_id")
+        university = metadata.get("university")
+
+        if not student_id or not university:
+            logger.error("[WEBHOOK] Missing student_id or university in metadata")
+            return JSONResponse(status_code=400, content={"ok": False, "error": "Missing student_id or university"})
+
+        logger.info(f"[WEBHOOK] student_id={student_id} university={university} status={status_val} transaction_id={transaction_id}")
+
+        student = get_student_record(student_id, university) or {}
+        if status_val and str(status_val).upper() == "SUCCESSFUL":
+            now = datetime.utcnow()
+            student["premium"] = True
+            student["premiumActivatedAt"] = now.isoformat()
+            student["premiumExpiresAt"] = (now + relativedelta(months=1)).isoformat()
+            save_student_record(student_id, university, student)
+            logger.info(f"[WEBHOOK] Premium activated for {student_id}@{university}")
+
+        return {"ok": True, "transaction_id": transaction_id, "status": status_val}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("[WEBHOOK] Unexpected error processing webhook: %s", e)
+        raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")
+
+
+
 # Always available (no auth required)
 app.include_router(debug_router)
 app.include_router(user_router)        # login/signup open
@@ -219,7 +320,11 @@ app.include_router(boardinghouse_router, dependencies=[Depends(get_current_user)
 app.include_router(store_router, dependencies=[Depends(get_current_user)])
 app.include_router(proxily_router, dependencies=[Depends(get_current_user)])
 app.include_router(lenco_router, dependencies=[Depends(get_current_user)])
-app.include_router(media_router)
+app.include_router(video_router)
+# Mount the ISO.web folder
+app.mount("/web", StaticFiles(directory="ISO.web", html=True), name="web")
+
+
 
 # Ping endpoint
 @app.get("/ping")
@@ -297,89 +402,6 @@ async def test_payment(req: PaymentRequest):
         logger.error(f"[PAYMENT TEST] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Payment failed: {str(e)}")
 
-# ------------------------------
-# Webhook (Lenco -> your app)
-# ------------------------------
-WEBHOOK_SIGNING_SECRET = "99137b878b12cd6e1a874f528ba48afc71b99077a4a763880ec536855fccec48"
-POSSIBLE_SIGNATURE_HEADERS = [
-    "x-lenco-signature",
-    "lenco-signature",
-    "x-webhook-signature",
-    "x-signature",
-    "signature",
-]
-
-def _verify_webhook_signature(secret: str, body: bytes, header_value: str) -> bool:
-    if not header_value:
-        return False
-    if "=" in header_value and header_value.split("=", 1)[0].lower() in {"sha256", "sha1"}:
-        _, header_value = header_value.split("=", 1)
-    try:
-        computed = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(computed, header_value)
-    except Exception as e:
-        logger.exception("[WEBHOOK] signature verification error: %s", e)
-        return False
-
-@webhook_router.post("/lenco")
-async def lenco_webhook(request: Request):
-    try:
-        raw_body = await request.body()
-        header_sig = None
-        for hname in POSSIBLE_SIGNATURE_HEADERS:
-            val = request.headers.get(hname)
-            if val:
-                header_sig = val
-                break
-
-        if not header_sig:
-            logger.warning("[WEBHOOK] No signature header found. Rejecting.")
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing signature header")
-
-        if not _verify_webhook_signature(WEBHOOK_SIGNING_SECRET, raw_body, header_sig):
-            logger.warning("[WEBHOOK] Signature mismatch.")
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
-
-        try:
-            data = await request.json()
-        except Exception:
-            import json as _json
-            data = _json.loads(raw_body.decode("utf-8"))
-
-        transaction_id = data.get("id")
-        status_val = data.get("status")
-        metadata = data.get("metadata", {})
-
-        student_id = metadata.get("student_id")
-        university = metadata.get("university")
-
-        if not student_id or not university:
-            logger.error("[WEBHOOK] Missing student_id or university in metadata")
-            return JSONResponse(status_code=400, content={"ok": False, "error": "Missing student_id or university"})
-
-        logger.info(f"[WEBHOOK] student_id={student_id} university={university} status={status_val} transaction_id={transaction_id}")
-
-        student = get_student_record(student_id, university) or {}
-        if status_val and str(status_val).upper() == "SUCCESSFUL":
-            now = datetime.utcnow()
-            student["premium"] = True
-            student["premiumActivatedAt"] = now.isoformat()
-            student["premiumExpiresAt"] = (now + relativedelta(months=1)).isoformat()
-            save_student_record(student_id, university, student)
-            logger.info(f"[WEBHOOK] Premium activated for {student_id}@{university}")
-
-        return {"ok": True, "transaction_id": transaction_id, "status": status_val}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("[WEBHOOK] Unexpected error processing webhook: %s", e)
-        raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("[WEBHOOK] Unexpected error processing webhook: %s", e)
-        raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")
 
 
 # ------------------------------
@@ -526,13 +548,13 @@ async def firebase_health():
 
 
 # ------------------------------
-# Device Registration Endpoint
+# Device Registration Endpoint (updated)
 # ------------------------------
 from pydantic import BaseModel
 
 class DeviceRegisterRequest(BaseModel):
     university: str
-    user_id: str          # can be student_id or landlord_id
+    user_id: str          # student_id or landlord_id
     role: str             # "student", "landlord", or "admin"
     device_token: str     # FCM token or unique device ID
     platform: str = "android"  # optional: android/ios/web
@@ -542,24 +564,37 @@ async def register_device(
     req: DeviceRegisterRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """
-    Register a device for notifications / tracking.
-    - Students: must match their own student_id + university
-    - Landlords/Admins: must match their own user_id + role
-    Stores under DEVICES/{user_id} with metadata.
-    """
-    # ✅ Ownership / role check
-    if current_user.get("role") == "student":
-        if current_user.get("user_id") != req.user_id or current_user.get("university") != req.university:
-            raise HTTPException(status_code=403, detail="Not authorized as student")
-    elif current_user.get("role") in ["landlord", "admin"]:
-        if current_user.get("user_id") != req.user_id or current_user.get("role") != req.role:
-            raise HTTPException(status_code=403, detail="Not authorized as landlord/admin")
-    else:
-        raise HTTPException(status_code=403, detail="Unsupported role")
+    logger.info(
+        "📱 Device register attempt → user_id=%s university=%s role=%s platform=%s",
+        req.user_id, req.university, req.role, req.platform
+    )
+
+    # Ownership check
+    if current_user:
+        logger.debug("Current user context: %s", current_user)
+        if (
+            current_user.get("user_id") != req.user_id
+            or current_user.get("university") != req.university
+        ):
+            logger.warning("Unauthorized device registration attempt")
+            raise HTTPException(status_code=403, detail="Not authorized")
 
     try:
         doc_ref = db.collection("DEVICES").document(req.user_id)
+        existing_doc = doc_ref.get()
+        existing = existing_doc.to_dict() if existing_doc.exists else None
+
+        logger.debug("Existing device record: %s", existing)
+
+        # Invalidate old device
+        if existing and existing.get("device_token") != req.device_token:
+            doc_ref.update({
+                "active": False,
+                "invalidated_at": datetime.utcnow().isoformat()
+            })
+            logger.info("🔄 Old device invalidated for user=%s", req.user_id)
+
+        # Save new device
         doc_ref.set({
             "university": req.university,
             "user_id": req.user_id,
@@ -567,12 +602,146 @@ async def register_device(
             "device_token": req.device_token,
             "platform": req.platform,
             "registered_at": datetime.utcnow().isoformat(),
+            "active": True,
         }, merge=True)
 
-        return {"ok": True, "message": f"Device registered for {req.role}"}
+        logger.info("✅ Device registered successfully for user=%s", req.user_id)
+
+        return {
+            "ok": True,
+            "message": f"Device registered for {req.role}",
+        }
+
     except Exception as e:
-        logger.exception("❌ Device registration error: %s", e)
-        raise HTTPException(status_code=500, detail=f"Error registering device: {str(e)}")
+        logger.exception("❌ Device registration error")
+        raise HTTPException(status_code=500, detail="Error registering device")
+
+
+
+
+
+
+class FCMRegistration(BaseModel):
+    student_id: str
+    university: str
+    fcm_token: str
+
+@app.post("/users/register_fcm")
+async def register_fcm(
+    req: FCMRegistration,
+    current_user: dict = Depends(get_current_user),
+):
+    logger.info(
+        "🔔 FCM registration attempt → student_id=%s university=%s",
+        req.student_id, req.university
+    )
+
+    if (
+        current_user.get("user_id") != req.student_id
+        or current_user.get("university") != req.university
+    ):
+        logger.warning("Unauthorized FCM registration")
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    try:
+        ref = (
+            db.collection("USERS")
+            .document(req.university)
+            .collection("students")
+            .document(req.student_id)
+        )
+
+        ref.set({
+            "fcm_token": req.fcm_token,
+            "updated_at": datetime.utcnow().isoformat(),
+        }, merge=True)
+
+        logger.info("✅ FCM token saved for user=%s", req.student_id)
+
+        return {"ok": True, "message": "FCM token registered"}
+
+    except Exception:
+        logger.exception("❌ FCM registration error")
+        raise HTTPException(status_code=500, detail="Error registering FCM token")
+
+
+
+
+
+
+logger = logging.getLogger("media_proxy")
+
+@app.get("/media/{file_path:path}")
+async def get_media_proxy(file_path: str, request: Request):
+    """
+    Proxy endpoint for serving media (images/videos) from S3.
+    Supports Range requests for efficient video streaming.
+    """
+    try:
+        # 1. Fetch object metadata
+        head = s3_client.head_object(Bucket=RAILWAY_BUCKET, Key=file_path)
+        file_size = head["ContentLength"]
+        content_type = head.get("ContentType", "application/octet-stream")
+
+        # 2. Check for Range header
+        range_header = request.headers.get("range")
+        if range_header:
+            try:
+                # Parse Range header: e.g. "bytes=0-1023"
+                range_value = range_header.strip().lower().replace("bytes=", "")
+                start_str, end_str = range_value.split("-")
+                start = int(start_str) if start_str else 0
+                end = int(end_str) if end_str else file_size - 1
+
+                # Clamp values
+                if start < 0:
+                    start = 0
+                if end >= file_size:
+                    end = file_size - 1
+
+                length = end - start + 1
+
+                # Fetch partial content from S3
+                obj = s3_client.get_object(
+                    Bucket=RAILWAY_BUCKET,
+                    Key=file_path,
+                    Range=f"bytes={start}-{end}"
+                )
+
+                return Response(
+                    content=obj["Body"].read(),
+                    status_code=206,
+                    headers={
+                        "Content-Range": f"bytes {start}-{end}/{file_size}",
+                        "Accept-Ranges": "bytes",
+                        "Content-Length": str(length),
+                        "Content-Type": content_type,
+                    },
+                )
+            except Exception as e:
+                logger.error(f"Range request parsing failed: {e}")
+                raise HTTPException(status_code=400, detail="Invalid Range header")
+
+        # 3. No Range header → stream whole file
+        obj = s3_client.get_object(Bucket=RAILWAY_BUCKET, Key=file_path)
+        return StreamingResponse(
+            obj["Body"],
+            media_type=content_type,
+            headers={
+                "Content-Length": str(file_size),
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=31536000",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    except s3_client.exceptions.NoSuchKey:
+        raise HTTPException(status_code=404, detail=f"File not found")
+    except Exception as e:
+        logger.error(f"Proxy streaming error for {file_path}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error fetching file")
+
+
 
 
 

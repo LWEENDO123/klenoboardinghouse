@@ -13,6 +13,9 @@ Notes:
 - Idempotency header is provided for init calls.
 - Provider auto-detection is implemented via prefix map; falls back to 'airtel'.
 """
+from CUZ.payment.firestore_adapter import log_collection_atomic
+from datetime import datetime
+from google.cloud import firestore
 from CUZ.core.firebase import db
 import json
 import uuid
@@ -26,6 +29,12 @@ import httpx
 from fastapi import HTTPException, APIRouter
 from pydantic import BaseModel
 import os
+from pydantic import BaseModel
+from typing import Optional
+
+
+router = APIRouter(prefix="/payments", tags=["payments"])
+
 
 # ----------------------
 # Logging
@@ -499,9 +508,7 @@ async def initialize_mobile_money_collection(
 # ----------------------
 # FastAPI Router for manual testing
 # ----------------------
-router = APIRouter(prefix="/payments", tags=["payments"])
-from pydantic import BaseModel
-from typing import Optional
+
 
 # This one is no longer needed since /collect was removed,
 # but if you want to keep it for reference/testing you can.
@@ -698,7 +705,7 @@ async def route_mobile_money(req: MobileMoneyRequest):
             elapsed += poll_interval_seconds
 
         # ✅ Atomic Firestore logging
-        from payment.firestore_adapter import log_collection_atomic
+        
         log_collection_atomic(
             req.student_id,
             req.university,   # ✅ use university, not country
@@ -733,10 +740,8 @@ if not logger.handlers:
     logger.addHandler(h)
 logger.setLevel(logging.DEBUG)
 
-router = APIRouter(prefix="/users", tags=["users"])
 
-from datetime import datetime
-from google.cloud import firestore
+
 
 # Reuse db from core.firebase or firestore_adapter
 # db = firestore.Client(...)
@@ -791,4 +796,9 @@ async def get_student_phone(student_id: str, university: str):
 
     logger.info(f"Returning phone_number={normalized_phone} for student_id={student_id}, university={university}")
     return response
+
+@router.get("/debug")
+async def payments_debug():
+    return {"ok": True, "msg": "payments router is active"}
+
   

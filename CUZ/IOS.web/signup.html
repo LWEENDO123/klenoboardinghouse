@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Kleno Signup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>KLENO</h1>
+    <h2>Create your account</h2>
+
+    <form id="signupForm">
+      <input type="text" id="first_name" placeholder="First Name" required>
+      <input type="text" id="last_name" placeholder="Last Name" required>
+      <input type="email" id="email" placeholder="Email" required>
+      <input type="password" id="password" placeholder="Password" required>
+      <input type="tel" id="phone_number" placeholder="Phone Number" required>
+      <select id="university" required>
+        <option value="">Choose University</option>
+        <option value="CUZM">Cavendish Main Campus</option>
+        <option value="CUZMED">Cavendish Medical Campus</option>
+        <option value="UNILUSM">UNILUS Main Campus</option>
+        <option value="CHRESO">Chreso University</option>
+        <option value="UNZA">UNZA Main Campus</option>
+      </select>
+      <button type="submit">Sign Up</button>
+    </form>
+
+    <p id="message"></p>
+    <p>Already have an account? <a href="login.html">Login</a></p>
+  </div>
+
+  <script src="javascript/signup.js"></script>
+</body>
+</html>

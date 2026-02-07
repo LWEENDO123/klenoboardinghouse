@@ -1,54 +1,119 @@
-#HOME/user_routes.py
-from fastapi import APIRouter, HTTPException, Depends, Query, Request
-from typing import Optional
+# CUZ/HOME/user_routes.py
+import logging
+import math
+from typing import Optional, List
+from datetime import datetime
+
+from fastapi import APIRouter, Query, Depends, HTTPException
+from fastapi.responses import RedirectResponse
+
 
 from CUZ.USERS.firebase import db
 from CUZ.HOME.models import BoardingHouseHomepage, BoardingHouseSummary
 from CUZ.HOME.security import get_current_user, get_premium_student
-from CUZ.core.config import CLUSTERS
-from CUZ.utils.token_utils import generate_location_token, decode_location_token
 from CUZ.USERS.security import get_admin_or_landlord
- # landlord/admin auth
+from CUZ.routers.region_router import get_boardinghouse_coords, resolve_region_offset
+from CUZ.utils.token_utils import generate_location_token, decode_location_token
 
-
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/home", tags=["HOME"])
 
+# Example region dictionary (keep or import your real REGIONS)
+REGIONS = {
+    "lusaka_west": ["UNZAM", "CUZM"],
+    # add other regions as needed
+}
 
 # ---------------------------
 # Helper: Validate student identity
-# ---------------------------
-def validate_student_identity(university: str, student_id: str):
+def validate_student_identity(university: str, student_id: str, requester_uni: Optional[str] = None, allow_cross_university: bool = False) -> bool:
     """
     Ensure the student exists in USERS/{university}/students/{student_id}.
-    Acts like a campus ID check.
+
+    Parameters
+    - university: the target university to check (e.g., selected from dropdown)
+    - student_id: the student's id to validate
+    - requester_uni: the authenticated user's university (used when allow_cross_university=True)
+    - allow_cross_university: if True, validate the student_id against requester_uni instead of `university`
+
+    Behavior
+    - If allow_cross_university is False (default), validate student_id under `university`.
+    - If allow_cross_university is True, validate student_id under `requester_uni`. If requester_uni is None, raises 400.
     """
-    user_ref = db.collection("USERS").document(university).collection("students").document(student_id)
-    if not user_ref.get().exists:
+    # Decide which university to validate against
+    target_uni = university
+    if allow_cross_university:
+        if not requester_uni:
+            logger.error("allow_cross_university=True but requester_uni is missing")
+            raise HTTPException(status_code=400, detail="Requester university required for cross-university validation")
+        target_uni = requester_uni
+
+    if not target_uni:
+        logger.error("validate_student_identity called with empty university (student_id=%s)", student_id)
+        raise HTTPException(status_code=400, detail="University is required")
+
+    logger.debug("Validating student identity student_id=%s against university=%s (allow_cross=%s requester_uni=%s)",
+                 student_id, target_uni, allow_cross_university, requester_uni)
+
+    try:
+        user_ref = db.collection("USERS").document(target_uni).collection("students").document(student_id)
+        snap = user_ref.get()
+    except Exception:
+        logger.exception("Firestore error checking student identity uni=%s student_id=%s", target_uni, student_id)
+        raise HTTPException(status_code=500, detail="Error validating student identity")
+
+    if not snap.exists:
+        logger.debug("Student not found: USERS/%s/students/%s", target_uni, student_id)
         raise HTTPException(status_code=403, detail="Invalid student identity")
+
+    logger.debug("Student validated: USERS/%s/students/%s exists", target_uni, student_id)
     return True
 
 
-# ---------------------------
-# GET /home - Paginated homepage summary (scroll-ready)
-# ---------------------------
 
+# Replace the existing handlers with this code in CUZ/HOME/user_routes.py
+
+# -------------------------
+# Default homepage (no scoped behavior)
 @router.get("", response_model=dict)
 @router.get("/", response_model=dict)
 async def get_home(
     university: Optional[str] = None,
     region: Optional[str] = None,
     student_id: str = Query(...),
+    scope: Optional[str] = Query(None, description="Use 'scoped' when selecting a university from the dropdown"),
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=50),
     filter: str = Query("all"),
     current_user: dict = Depends(get_current_user),
 ):
+    logger.debug(
+        "get_home called: university=%s region=%s scope=%s student_id=%s page=%d limit=%d filter=%s",
+        university, region, scope, student_id, page, limit, filter
+    )
     try:
+        # Decide which university will be used for querying
         uni = university or current_user.get("university")
-        validate_student_identity(uni, student_id)
 
-        # Determine universities
+        # Validation: if client explicitly requested scoped browsing, validate the requester
+        # against their own university (allow browsing other universities).
+        try:
+            if scope and scope.lower() == "scoped":
+                requester_uni = current_user.get("university")
+                logger.debug("Scope=scoped: validating student_id=%s against requester_uni=%s", student_id, requester_uni)
+                validate_student_identity(requester_uni, student_id)
+            else:
+                logger.debug("Default scope: validating student_id=%s against uni=%s", student_id, uni)
+                validate_student_identity(uni, student_id)
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("validate_student_identity unexpected error for uni=%s student_id=%s", uni, student_id)
+            raise HTTPException(status_code=500, detail="Error validating student identity")
+
+        # Determine universities for broad/global queries
         if region:
+            logger.debug("Region provided: %s", region)
             if region not in REGIONS:
                 raise HTTPException(status_code=400, detail="Invalid region")
             universities = REGIONS[region]
@@ -56,97 +121,234 @@ async def get_home(
             universities = [university]
         else:
             universities = [uni]
+        logger.debug("Universities to query: %s", universities)
 
-        # Query Firestore
-        boardinghouses_ref = (
-            db.collection("BOARDINGHOUSES")
-            .where("universities", "array_contains_any", universities)
-            .get()
-        )
-        if not boardinghouses_ref:
-            boardinghouses_ref = (
-                db.collection("HOME").document(uni).collection("boardinghouse").get()
-            )
+        # Run global query safely (array_contains_any) or fallback to scoped HOME
+        boardinghouses_docs = []
+        if universities:
+            if len(universities) > 10:
+                raise HTTPException(status_code=400, detail="Too many universities in query; reduce to 10 or fewer")
+            try:
+                logger.debug("Querying BOARDINGHOUSES with universities=%s", universities)
+                boardinghouses_docs = safe_array_contains_any(db.collection("BOARDINGHOUSES"), "universities", universities)
+                logger.debug("Global query returned %d docs", len(boardinghouses_docs) if boardinghouses_docs is not None else 0)
+            except HTTPException:
+                raise
+            except Exception:
+                logger.exception("Global BOARDINGHOUSES query failed for universities=%s", universities)
+                raise HTTPException(status_code=500, detail="Error querying boardinghouses")
 
-        houses = [doc.to_dict() | {"id": doc.id} for doc in boardinghouses_ref]
+        # Fallback: scoped HOME/{uni}/BOARDHOUSE
+        if not boardinghouses_docs:
+            try:
+                logger.debug("Falling back to HOME/%s/BOARDHOUSE (limit=100)", uni)
+                boardinghouses_docs = db.collection("HOME").document(uni).collection("BOARDHOUSE").limit(100).get()
+                logger.debug("Scoped fallback returned %d docs", len(boardinghouses_docs) if boardinghouses_docs is not None else 0)
+            except Exception:
+                logger.exception("Scoped fallback query failed for HOME/%s/BOARDHOUSE", uni)
+                raise HTTPException(status_code=500, detail="Error querying scoped boardinghouses")
 
-        # Apply filter
-        if filter == "new":
-            houses.sort(key=lambda h: h.get("created_at"), reverse=True)
-
-        # Pagination
-        total = len(houses)
-        start = (page - 1) * limit
-        end = min(start + limit, total)
-        paginated = houses[start:end]
-
-        homepage_data = []
-        for data in paginated:
-            prices = [
-                float(data.get("price_12", float("inf"))),
-                float(data.get("price_6", float("inf"))),
-                float(data.get("price_5", float("inf"))),
-                float(data.get("price_4", float("inf"))),
-                float(data.get("price_3", float("inf"))),
-                float(data.get("price_2", float("inf"))),
-                float(data.get("price_1", float("inf"))),
-                float(data.get("price_apartment", float("inf"))),
-            ]
-            lowest_price = min([p for p in prices if p != float("inf")], default=float("inf"))
-            price_str = str(int(lowest_price)) if lowest_price != float("inf") else "N/A"
-
-            image = (
-                data.get("image_12")
-                or data.get("image_6")
-                or data.get("image_5")
-                or data.get("image_4")
-                or data.get("image_3")
-                or data.get("image_2")
-                or data.get("image_1")
-                or data.get("image_apartment")
-                or (data.get("images", []) or [None])[0]
-                or "https://via.placeholder.com/400x200"
-            )
-
-            gender = (
-                "mixed" if data.get("gender_both")
-                else "male" if data.get("gender_male")
-                else "female" if data.get("gender_female")
-                else "both"
-            )
-
-            homepage_data.append(
-                BoardingHouseHomepage(
-                    id=data["id"],
-                    name_boardinghouse=data.get("name", "Unnamed"),
-                    price=price_str,
-                    image=image,
-                    gender=gender,
-                    location=data.get("location", ""),
-                    rating=data.get("rating"),
-                    type=data.get("type", "boardinghouse"),
-                    teaser_video=data.get("teaser_video") or data.get("video"),
-                )
-            )
-
-        return {
-            "data": homepage_data,
-            "total": total,
-            "current_page": page,
-            "total_pages": (total + limit - 1) // limit,
-            "has_more": end < total,
-        }
+        # Normalize and return
+        return normalize_and_build_response(boardinghouses_docs, page, limit, filter)
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching homepage data: {str(e)}")
-    
+    except Exception:
+        logger.exception("Unhandled error in get_home")
+        raise HTTPException(status_code=500, detail="Error fetching homepage data")
+
+
+
+# -------------------------
+# Scoped endpoint (called by dropdown)
+@router.get("/scoped", response_model=dict)
+async def get_home_scoped(
+    university: str = Query(..., description="University selected from dropdown"),
+    student_id: str = Query(...),
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=50),
+    filter: str = Query("all"),
+    current_user: dict = Depends(get_current_user),
+):
+    logger.debug("get_home_scoped called: selected_uni=%s requester_uni=%s student_id=%s page=%d limit=%d filter=%s",
+                 university, current_user.get("university"), student_id, page, limit, filter)
+    try:
+        # Step 1: validate requester against their own university (allow browsing other unis)
+        user_uni = current_user.get("university")
+        logger.debug("Validating requester student_id=%s against user_uni=%s", student_id, user_uni)
+        try:
+            validate_student_identity(user_uni, student_id)
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("validate_student_identity unexpected error for uni=%s student_id=%s", user_uni, student_id)
+            raise HTTPException(status_code=500, detail="Error validating student identity")
+
+        # Step 2: ensure selected university exists (HOME doc)
+        try:
+            uni_ref = db.collection("HOME").document(university)
+            exists = uni_ref.get().exists
+            logger.debug("HOME/%s exists=%s", university, exists)
+            if not exists:
+                raise HTTPException(status_code=400, detail="Selected university not available")
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("Error checking existence of HOME/%s", university)
+            raise HTTPException(status_code=500, detail="Error validating selected university")
+
+        # Step 3: check collection casing and presence
+        try:
+            bh_upper = db.collection("HOME").document(university).collection("BOARDHOUSE").limit(1).get()
+            bh_lower = db.collection("HOME").document(university).collection("boardinghouse").limit(1).get()
+            has_upper = bool(bh_upper)
+            has_lower = bool(bh_lower)
+            logger.debug("HOME/%s/BOARDHOUSE exists=%s; HOME/%s/boardinghouse exists=%s", university, has_upper, university, has_lower)
+            collection_name = "BOARDHOUSE" if has_upper else ("boardinghouse" if has_lower else "BOARDHOUSE")
+        except Exception:
+            logger.exception("Error checking BOARDHOUSE collection existence for %s", university)
+            raise HTTPException(status_code=500, detail="Error checking scoped collection")
+
+        # Step 4: query the chosen scoped collection
+        try:
+            logger.debug("Querying HOME/%s/%s for boardinghouses", university, collection_name)
+            boardinghouses_docs = db.collection("HOME").document(university).collection(collection_name).get()
+            logger.debug("Scoped query returned %d docs", len(boardinghouses_docs) if boardinghouses_docs is not None else 0)
+        except Exception:
+            logger.exception("Firestore query failed for HOME/%s/%s", university, collection_name)
+            raise HTTPException(status_code=500, detail="Error querying boardinghouses")
+
+        # Step 5: normalize and build response
+        return normalize_and_build_response(boardinghouses_docs, page, limit, filter)
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unhandled error in get_home_scoped")
+        raise HTTPException(status_code=500, detail="Error fetching scoped homepage data")
+
+
+# -------------------------
+
+# -------------------------
+# Shared helper: safe array_contains_any
+def safe_array_contains_any(collection_ref, field, values):
+    logger.debug("safe_array_contains_any called with %d values: %s", len(values) if values else 0, values)
+    if not values:
+        logger.debug("safe_array_contains_any: empty values -> returning []")
+        return []
+    if len(values) > 10:
+        logger.warning("safe_array_contains_any: values length > 10 -> rejecting request")
+        raise HTTPException(status_code=400, detail="Too many values for array_contains_any; reduce to 10 or fewer")
+    try:
+        docs = collection_ref.where(field, "array_contains_any", values).get()
+        logger.debug("safe_array_contains_any: returned %d docs", len(docs) if docs is not None else 0)
+        return docs or []
+    except Exception:
+        logger.exception("Firestore array_contains_any failed for field=%s values=%s", field, values)
+        raise HTTPException(status_code=500, detail="Error querying boardinghouses")
+
+
+# -------------------------
+# Shared helper: normalize documents and build homepage response
+def normalize_and_build_response(boardinghouses_docs, page: int, limit: int, filter: str):
+    """
+    Normalize Firestore docs into the homepage response shape.
+    Defensive: skips malformed docs, normalizes created_at, computes cover image and gender.
+    """
+    houses = []
+    for doc in boardinghouses_docs or []:
+        try:
+            raw = doc.to_dict() or {}
+        except Exception:
+            logger.exception("Failed to parse Firestore doc id=%s", getattr(doc, "id", "<unknown>"))
+            continue
+
+        doc_id = getattr(doc, "id", raw.get("id", ""))
+        ca = raw.get("created_at")
+        try:
+            if hasattr(ca, "to_datetime"):
+                created_at = ca.to_datetime()
+            elif isinstance(ca, datetime):
+                created_at = ca
+            else:
+                created_at = datetime.utcnow()
+        except Exception:
+            logger.exception("created_at normalization failed for doc id=%s", doc_id)
+            created_at = datetime.utcnow()
+
+        safe = {
+            "id": str(doc_id),
+            "name": raw.get("name") or raw.get("name_boardinghouse") or "Unnamed",
+            "cover_image": raw.get("cover_image") or raw.get("image") or None,
+            "gallery_images": list(raw.get("gallery_images") or raw.get("images") or []),
+            "location": raw.get("location") or "",
+            "rating": raw.get("rating") if isinstance(raw.get("rating"), (int, float)) else None,
+            "type": raw.get("type") or "boardinghouse",
+            "created_at": created_at,
+            "gender_male": bool(raw.get("gender_male")),
+            "gender_female": bool(raw.get("gender_female")),
+            "gender_both": bool(raw.get("gender_both")),
+            "teaser_video": raw.get("teaser_video") or raw.get("video") or None,
+        }
+        houses.append(safe)
+
+    # Apply filter
+    if filter and filter.lower() == "new":
+        houses.sort(key=lambda h: h.get("created_at", datetime.min), reverse=True)
+
+    # Pagination
+    total = len(houses)
+    start = (page - 1) * limit
+    end = min(start + limit, total)
+    paginated = houses[start:end]
+
+    homepage_data = []
+    for data in paginated:
+        images_list = [str(x) for x in (data.get("gallery_images") or []) if x]
+        legacy_image = data.get("cover_image") or (images_list[0] if images_list else None)
+        cover = str(legacy_image) if legacy_image else "https://via.placeholder.com/400x200"
+
+        gender = (
+            "mixed" if data.get("gender_both")
+            else "male" if data.get("gender_male")
+            else "female" if data.get("gender_female")
+            else "both"
+        )
+
+        try:
+            item_kwargs = {
+                "id": str(data.get("id", "")),
+                "name_boardinghouse": str(data.get("name", "Unnamed")),
+                "image": cover,
+                "cover_image": str(data.get("cover_image") or cover),
+                "gender": gender,
+                "location": str(data.get("location", "") or ""),
+                "rating": (data.get("rating") if isinstance(data.get("rating"), (int, float)) else None),
+                "type": str(data.get("type", "boardinghouse")),
+                "teaser_video": (str(data.get("teaser_video")) if data.get("teaser_video") else None),
+            }
+            if "price" in BoardingHouseHomepage.__fields__:
+                item_kwargs["price"] = data.get("price", None) or "N/A"
+            homepage_data.append(BoardingHouseHomepage(**item_kwargs).dict())
+        except Exception:
+            logger.exception("Failed to build BoardingHouseHomepage for doc id=%s", data.get("id"))
+            continue
+
+    return {
+        "data": homepage_data,
+        "total": total,
+        "current_page": page,
+        "total_pages": (total + limit - 1) // limit if limit else 0,
+        "has_more": end < total,
+    }
+
+
 
 
 
 # ---------------------------
-# GET /home/boardinghouse/{id} 
+# GET /home/boardinghouse/{id} (summary)
 # ---------------------------
 @router.get("/boardinghouse/{id}", response_model=BoardingHouseSummary)
 async def get_boardinghouse_summary(
@@ -155,88 +357,118 @@ async def get_boardinghouse_summary(
     student_id: str,
     current_user: dict = Depends(get_current_user),
 ):
+    validate_student_identity(university, student_id)
+
+    # Try global collection first
+    ref = db.collection("BOARDINGHOUSES").document(id).get()
+    if not ref.exists:
+        ref = db.collection("HOME").document(university).collection("BOARDHOUSE").document(id).get()
+    if not ref.exists:
+        raise HTTPException(status_code=404, detail="Boarding house not found")
+
+    data = ref.to_dict() or {}
+
+    # --- Build normalized structured gallery ---
+    gallery_items: list[dict] = []
+
+    raw_gallery = data.get("gallery")
+    if isinstance(raw_gallery, list) and raw_gallery:
+        for item in raw_gallery:
+            if not item:
+                continue
+            if isinstance(item, dict):
+                media_type = str(item.get("type", "")).lower() or None
+                url = item.get("url") or item.get("video") or item.get("image") or item.get("src")
+                thumbnail = item.get("thumbnail_url") or item.get("thumbnail") or item.get("thumb")
+                caption = item.get("caption") or item.get("title")
+                if url:
+                    if media_type not in ("image", "video"):
+                        lower = str(url).lower()
+                        media_type = "video" if lower.endswith((".mp4", ".m3u8", ".webm")) or "video" in lower else "image"
+                    gallery_items.append({
+                        "type": media_type,
+                        "url": str(url),
+                        "thumbnail_url": str(thumbnail) if thumbnail else None,
+                        "caption": str(caption) if caption else None,
+                    })
+            else:
+                url = str(item)
+                lower = url.lower()
+                media_type = "video" if lower.endswith((".mp4", ".m3u8", ".webm")) or "video" in lower else "image"
+                gallery_items.append({"type": media_type, "url": url, "thumbnail_url": None, "caption": None})
+
+    if not gallery_items:
+        images = data.get("images") or []
+        if isinstance(images, list):
+            for img in images:
+                if img:
+                    gallery_items.append({"type": "image", "url": str(img), "thumbnail_url": None, "caption": None})
+        videos = data.get("videos") or []
+        if isinstance(videos, list):
+            for v in videos:
+                if v:
+                    gallery_items.append({"type": "video", "url": str(v), "thumbnail_url": None, "caption": None})
+
+    cover_image = (
+        data.get("cover_image")
+        or data.get("coverImage")
+        or data.get("image")
+        or (gallery_items[0]["url"] if gallery_items else None)
+    )
+
+    payload = {
+        "id": id,
+        "name": data.get("name", "Unnamed"),
+        # legacy room fields
+        "image_12": data.get("image_12"),
+        "price_12": data.get("price_12"),
+        "sharedroom_12": data.get("sharedroom_12"),
+        "image_6": data.get("image_6"),
+        "price_6": data.get("price_6"),
+        "sharedroom_6": data.get("sharedroom_6"),
+        "image_5": data.get("image_5"),
+        "price_5": data.get("price_5"),
+        "sharedroom_5": data.get("sharedroom_5"),
+        "image_4": data.get("image_4"),
+        "price_4": data.get("price_4"),
+        "sharedroom_4": data.get("sharedroom_4"),
+        "image_3": data.get("image_3"),
+        "price_3": data.get("price_3"),
+        "sharedroom_3": data.get("sharedroom_3"),
+        "image_2": data.get("image_2"),
+        "price_2": data.get("price_2"),
+        "sharedroom_2": data.get("sharedroom_2"),
+        "image_1": data.get("image_1"),
+        "price_1": data.get("price_1"),
+        "singleroom": data.get("singleroom"),
+        "image_apartment": data.get("image_apartment"),
+        "price_apartment": data.get("price_apartment"),
+        "apartment": data.get("apartment"),
+
+        # new structured fields
+        "cover_image": cover_image,
+        "gallery": gallery_items,
+
+        # other fields
+        "voice_notes": data.get("voice_notes", []) or [],
+        "space_description": data.get("space_description") or data.get("spaceDescription") or "",
+        "conditions": data.get("conditions"),
+        "amenities": data.get("amenities", []) or [],
+        "location": data.get("location", "") or "",
+        "GPS_coordinates": data.get("GPS_coordinates"),
+        "yango_coordinates": data.get("yango_coordinates"),
+        "phone_number": data.get("phone_number") or data.get("phoneNumber") or None,
+    }
+
     try:
-        validate_student_identity(university, student_id)
-
-        ref = db.collection("BOARDINGHOUSES").document(id).get()
-        if not ref.exists:
-            ref = (
-                db.collection("HOME")
-                .document(university)
-                .collection("boardinghouse")
-                .document(id)
-                .get()
-            )
-
-        if not ref.exists:
-            raise HTTPException(status_code=404, detail="Boarding house not found")
-
-        data = ref.to_dict()
-
-        return {
-            "name": data.get("name", "Unnamed"),
-
-            # Room types
-            "image_12": data.get("image_12"),
-            "price_12": data.get("price_12"),
-            "sharedroom_12": data.get("sharedroom_12"),
-
-            "image_6": data.get("image_6"),
-            "price_6": data.get("price_6"),
-            "sharedroom_6": data.get("sharedroom_6"),
-
-            "image_5": data.get("image_5"),
-            "price_5": data.get("price_5"),
-            "sharedroom_5": data.get("sharedroom_5"),
-
-            "image_4": data.get("image_4"),
-            "price_4": data.get("price_4"),
-            "sharedroom_4": data.get("sharedroom_4"),
-
-            "image_3": data.get("image_3"),
-            "price_3": data.get("price_3"),
-            "sharedroom_3": data.get("sharedroom_3"),
-
-            "image_2": data.get("image_2"),
-            "price_2": data.get("price_2"),
-            "sharedroom_2": data.get("sharedroom_2"),
-
-            "image_1": data.get("image_1"),
-            "price_1": data.get("price_1"),
-            "singleroom": data.get("singleroom"),
-
-            "image_apartment": data.get("image_apartment"),
-            "price_apartment": data.get("price_apartment"),
-            "apartment": data.get("apartment"),
-
-            # Media
-            "gallery_images": [img for img in [
-                data.get("image_1"),
-                data.get("image_2"),
-                data.get("image_3"),
-                data.get("image_4"),
-                data.get("image_5"),
-                data.get("image_6"),
-                data.get("image_apartment"),
-            ] if img],
-            "videos": data.get("videos", []) if isinstance(data.get("videos"), list) else [data.get("videos")] if data.get("videos") else [],
-            "voice_notes": data.get("voice_notes", []) if isinstance(data.get("voice_notes"), list) else [data.get("voice_notes")] if data.get("voice_notes") else [],
-
-            # Metadata
-            "space_description": data.get("space_description", "Kleno will update you when number of spaces is available."),
-            "conditions": data.get("conditions"),
-            "amenities": data.get("amenities", []),
-            "location": data.get("location", ""),
-            "GPS_coordinates": data.get("GPS_coordinates"),
-            "yango_coordinates": data.get("yango_coordinates"),
-        }
-
-    except HTTPException:
-        raise
+        return BoardingHouseSummary(**payload)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching boarding house summary: {str(e)}")
- 
+        logger.exception("BoardingHouseSummary validation failed for id=%s", id)
+        raise HTTPException(status_code=500, detail=f"Boarding house payload validation error: {str(e)}")
 
+
+# (Other endpoints such as directions, landlord previews, redirects remain unchanged.
+#  Add them below ensuring all referenced helpers and imports exist.)
 
 
 # ---------------------------
@@ -300,85 +532,51 @@ async def get_yango_links(
 ):
     validate_student_identity(university, student_id)
 
-    # --------------------------------------------------
-    # Fetch boarding house
-    # --------------------------------------------------
-    doc = db.collection("BOARDINGHOUSES").document(id).get()
-    if not doc.exists:
-        doc = (
-            db.collection("HOME")
-            .document(university)
-            .collection("boardinghouse")
-            .document(id)
-            .get()
-        )
+    # 🔹 Try region-based lookup first
+    dest_lat, dest_lon = None, None
+    if region:
+        try:
+            dest_lat, dest_lon = get_boardinghouse_coords(region, id)
+        except Exception:
+            pass
 
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="Boarding house not found")
+    # 🔹 Fallback to Firestore
+    if not dest_lat or not dest_lon:
+        doc = db.collection("BOARDINGHOUSES").document(id).get()
+        if not doc.exists:
+            doc = db.collection("HOME").document(university).collection("boardinghouse").document(id).get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Boarding house not found")
 
-    data = doc.to_dict()
+        data = doc.to_dict()
+        coords = data.get("yango_coordinates") or data.get("GPS_coordinates")
+        if not coords or len(coords) != 2:
+            raise HTTPException(status_code=400, detail="Yango coordinates missing")
+        dest_lat, dest_lon = coords
 
-    coords = data.get("yango_coordinates") or data.get("GPS_coordinates")
-    if not coords or len(coords) != 2:
-        raise HTTPException(status_code=400, detail="Yango coordinates missing")
-
-    dest_lat, dest_lon = coords
+    # ✅ Apply drift correction
     dest_lat, dest_lon = resolve_region_offset(region, dest_lat, dest_lon)
 
-    # --------------------------------------------------
-    # Secure redirect support (optional)
-    # --------------------------------------------------
-    if secure:
-        token = create_location_token(
-            current_lat, current_lon, dest_lat, dest_lon
-        )
-        return {
-            "secure_link": f"https://yourdomain.com/yango/redirect/{token}",
-            "service": "yango",
-        }
-
-    # --------------------------------------------------
-    # 1️⃣ Primary browser link (Android-safe, HTTPS)
-    # --------------------------------------------------
+    # Build links
     browser_link = (
         "https://yango.com/en_int/order/"
-        f"?gfrom={current_lat},{current_lon}"
-        f"&gto={dest_lat},{dest_lon}"
+        f"?gfrom={current_lat},{current_lon}&gto={dest_lat},{dest_lon}"
         f"&tariff={tariff}&lang={lang}"
     )
-
-    # --------------------------------------------------
-    # 2️⃣ Optional legacy link (kept for fallback/debug)
-    # --------------------------------------------------
-    legacy_browser_link = (
-        "https://yango.com/en_int/order/?from=order_PE"
-        f"&gfrom={current_lat},{current_lon}"
-        f"&gto={dest_lat},{dest_lon}"
-        f"&tariff={tariff}&lang={lang}"
-    )
-
-    # --------------------------------------------------
-    # 3️⃣ Deep link (ONLY if app installed)
-    # --------------------------------------------------
     deep_link = (
-        "yango://route?"
-        f"start-lat={current_lat}&start-lon={current_lon}"
+        f"yango://route?start-lat={current_lat}&start-lon={current_lon}"
         f"&end-lat={dest_lat}&end-lon={dest_lon}"
     )
 
-    # --------------------------------------------------
-    # Response
-    # --------------------------------------------------
     return {
-        "browser_link": browser_link,              # ✅ use this in WebView
-        "legacy_browser_link": legacy_browser_link,  # ⚠️ optional fallback
-        "deep_link": deep_link,                   # ⚠️ app-installed only
+        "browser_link": browser_link,
+        "deep_link": deep_link,
         "pickup": [current_lat, current_lon],
         "dropoff": [dest_lat, dest_lon],
         "region": region or "direct",
-        "android_safe": True,
         "service": "yango",
     }
+
 
 
 
@@ -398,37 +596,34 @@ async def get_google_directions(
 ):
     validate_student_identity(university, student_id)
 
-    ref = db.collection("BOARDINGHOUSES").document(id).get()
-    if not ref.exists:
-        ref = (
-            db.collection("HOME")
-            .document(university)
-            .collection("boardinghouse")
-            .document(id)
-            .get()
-        )
-    if not ref.exists:
-        raise HTTPException(status_code=404, detail="Boarding house not found")
+    # 🔹 Try region-based lookup first
+    dest_lat, dest_lon = None, None
+    if region:
+        try:
+            dest_lat, dest_lon = get_boardinghouse_coords(region, id)
+        except Exception:
+            pass
 
-    data = ref.to_dict()
-    coords = data.get("GPS_coordinates")
-    if not coords or len(coords) != 2:
-        raise HTTPException(status_code=400, detail="Google coordinates not available")
+    # 🔹 Fallback to Firestore GPS coordinates
+    if not dest_lat or not dest_lon:
+        ref = db.collection("BOARDINGHOUSES").document(id).get()
+        if not ref.exists:
+            ref = db.collection("HOME").document(university).collection("boardinghouse").document(id).get()
+        if not ref.exists:
+            raise HTTPException(status_code=404, detail="Boarding house not found")
 
-    dest_lat, dest_lon = coords
+        data = ref.to_dict()
+        coords = data.get("GPS_coordinates")
+        if not coords or len(coords) != 2:
+            raise HTTPException(status_code=400, detail="Google coordinates not available")
+        dest_lat, dest_lon = coords
+
+    # ✅ Apply regional drift correction
     dest_lat, dest_lon = resolve_region_offset(region, dest_lat, dest_lon)
 
-    # Optional secure link
-    if secure:
-        token = create_location_token(current_lat, current_lon, dest_lat, dest_lon)
-        return {"secure_link": f"https://yourdomain.com/google/redirect/{token}", "service": "google"}
-
-    # Normal direction link
+    # Build link
     if current_lat is not None and current_lon is not None:
-        link = (
-            f"https://www.google.com/maps/dir/?api=1"
-            f"&origin={current_lat},{current_lon}&destination={dest_lat},{dest_lon}"
-        )
+        link = f"https://www.google.com/maps/dir/?api=1&origin={current_lat},{current_lon}&destination={dest_lat},{dest_lon}"
     else:
         link = f"https://www.google.com/maps/dir/?api=1&destination={dest_lat},{dest_lon}"
 
@@ -437,8 +632,9 @@ async def get_google_directions(
         "region": region or "direct",
         "service": "google",
     }
-
 # --------------------------------------------------
+
+
 # 🔐 Redirect Endpoints (Unchanged)
 @router.get("/yango/redirect/{token}")
 async def redirect_to_yango(token: str):
@@ -604,7 +800,7 @@ async def get_landlord_phone(
     current_user: dict = Depends(get_premium_student),  # ✅ premium-only
 ):
     """
-    Fetch landlord phone number for a boarding house.
+    Fetch boarding house phone number directly.
     Premium students only.
     """
     try:
@@ -616,34 +812,20 @@ async def get_landlord_phone(
             raise HTTPException(status_code=404, detail="Boarding house not found")
 
         data = ref.to_dict()
-        landlord_id = data.get("landlord_id")
-        if not landlord_id:
-            raise HTTPException(status_code=404, detail="Landlord not linked to this boarding house")
-
-        # Fetch landlord profile
-        landlord_ref = db.collection("USERS").document(university).collection("landlords").document(landlord_id).get()
-        if not landlord_ref.exists:
-            raise HTTPException(status_code=404, detail="Landlord not found")
-
-        landlord_data = landlord_ref.to_dict()
-        phone_number = landlord_data.get("phone_number")
+        phone_number = data.get("phone_number")
         if not phone_number:
-            raise HTTPException(status_code=404, detail="Landlord phone number not available")
+            raise HTTPException(status_code=404, detail="Phone number not available for this boarding house")
 
         return {
-            "landlord_id": landlord_id,
+            "house_id": id,
             "phone_number": phone_number,
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching landlord phone number: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching boarding house phone number: {str(e)}")
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching landlord phone number: {str(e)}")
 
 
 

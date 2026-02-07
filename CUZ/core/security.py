@@ -11,7 +11,8 @@ from fastapi.security import HTTPBearer, OAuth2PasswordBearer
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from CUZ.core.firebase import db
-from CUZ.core.tokens import get_secret_key  # ✅ ensure consistent secret source
+
+
 
 
 # ---------------------------
@@ -124,8 +125,8 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
 
 async def get_current_user(request: Request, credentials=Depends(security)):
     token = credentials.credentials
+
     try:
-        # ✅ Use Firestore-backed secret key
         payload = jwt.decode(token, get_secret_key(), algorithms=[ALGORITHM])
 
         sub = payload.get("sub")
@@ -134,20 +135,75 @@ async def get_current_user(request: Request, credentials=Depends(security)):
         university = payload.get("university")
         premium = payload.get("premium", False)
 
-        if not sub or not role:
+        logger.debug(
+            "JWT decoded → sub=%s role=%s user_id=%s university=%s",
+            sub, role, user_id, university
+        )
+
+        if not sub or not role or not user_id:
+            logger.warning("Invalid JWT payload: %s", payload)
             raise HTTPException(status_code=401, detail="Invalid token payload")
 
-        # Admin bypass
+        # -------------------------------------------------
+        # 🔓 Device-free endpoints (FIRST LOGIN FLOW)
+        # -------------------------------------------------
+        DEVICE_FREE_ENDPOINTS = {
+            "/device/register",
+            "/users/register_fcm",
+        }
+
+        path = request.url.path
+        enforce_device = path not in DEVICE_FREE_ENDPOINTS
+
+        logger.debug(
+            "Auth path=%s | enforce_device=%s",
+            path, enforce_device
+        )
+
+        # -------------------------------------------------
+        # 🔒 Enforce one-device-per-account (if required)
+        # -------------------------------------------------
+        if enforce_device:
+            doc = db.collection("DEVICES").document(user_id).get()
+
+            if not doc.exists:
+                logger.warning("No device registered for user_id=%s", user_id)
+                raise HTTPException(status_code=401, detail="No active device registered")
+
+            device_info = doc.to_dict()
+            current_device_token = request.headers.get("x-device-token")
+
+            logger.debug(
+                "Device check → header_token=%s firestore_token=%s active=%s",
+                current_device_token,
+                device_info.get("device_token"),
+                device_info.get("active"),
+            )
+
+            if not current_device_token:
+                raise HTTPException(status_code=401, detail="Missing device token")
+
+            if (
+                device_info.get("device_token") != current_device_token
+                or not device_info.get("active", False)
+            ):
+                raise HTTPException(status_code=401, detail="Logged in on another device")
+
+        # -------------------------------------------------
+        # 👑 Admin bypass
+        # -------------------------------------------------
         if role == "admin":
             user = {
                 "email": sub,
                 "role": "admin",
                 "user_id": user_id or "ADMIN001",
                 "premium": True,
-                "university": university or "ALL"
+                "university": university or "ALL",
             }
         else:
-            # Verify user exists in Firestore
+            # -------------------------------------------------
+            # 🔎 Verify user exists
+            # -------------------------------------------------
             if role == "student":
                 ref = (
                     db.collection("USERS")
@@ -160,6 +216,7 @@ async def get_current_user(request: Request, credentials=Depends(security)):
                 ref = db.collection("LANDLORDS").document(user_id).get()
 
             if not ref.exists:
+                logger.warning("User not found in Firestore: %s", user_id)
                 raise HTTPException(status_code=401, detail="User not found")
 
             data = ref.to_dict()
@@ -172,13 +229,21 @@ async def get_current_user(request: Request, credentials=Depends(security)):
             }
 
         request.scope["user"] = user
+        logger.debug("Authenticated user context: %s", user)
         return user
 
-    except JWTError:
+    except JWTError as e:
+        logger.warning("JWT error: %s", str(e))
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    except Exception:
-        logger.exception("Error validating user")
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.exception("❌ Error validating user")
         raise HTTPException(status_code=500, detail="Error validating user")
+
+
 
 
 # ---------------------------
