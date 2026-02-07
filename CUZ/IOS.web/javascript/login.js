@@ -38,9 +38,11 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
       localStorage.setItem("user_id", data.user_id);
       localStorage.setItem("university", data.university);
 
-      // If backend returns a device_token, save it too
+      // Ensure a device_token is always present
       if (data.device_token) {
         localStorage.setItem("device_token", data.device_token);
+      } else {
+        localStorage.setItem("device_token", "web-" + Date.now());
       }
 
       // 🔹 Register device immediately after login
@@ -49,7 +51,7 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
           university: data.university,
           user_id: data.user_id,
           role: data.role,
-          device_token: localStorage.getItem("device_token") || "web-" + Date.now(),
+          device_token: localStorage.getItem("device_token"),
           platform: "web"
         });
         console.log("Device registered successfully");
