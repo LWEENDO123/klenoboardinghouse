@@ -322,7 +322,7 @@ app.include_router(proxily_router, dependencies=[Depends(get_current_user)])
 app.include_router(lenco_router, dependencies=[Depends(get_current_user)])
 app.include_router(video_router)
 # Mount the ISO.web folder
-app.mount("/web", StaticFiles(directory="ISO.web", html=True), name="web")
+app.mount("/web", StaticFiles(directory="IOS.web", html=True), name="web")
 
 
 
