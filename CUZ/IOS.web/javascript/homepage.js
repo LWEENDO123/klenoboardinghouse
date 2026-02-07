@@ -24,20 +24,32 @@ async function fetchHouses(refresh = false) {
   const uniParam = selectedUniversity ? `&university=${selectedUniversity}` : "";
   const url = `${baseUrl}/home?student_id=${studentId}${uniParam}&scope=${scope}&page=${page}&limit=${limit}&filter=${selectedFilter}`;
 
+  console.log("[DEBUG] Fetching houses from:", url);
+
   try {
     const res = await authorizedGet(url);
+    console.log("[DEBUG] Response status:", res.status);
+
     const data = await res.json();
+    console.log("[DEBUG] Response JSON:", data);
 
     if (res.ok) {
       const houses = data.data || [];
-      houses.forEach(h => renderHouse(h));
+      console.log("[DEBUG] Houses array length:", houses.length);
+
+      houses.forEach(h => {
+        console.log("[DEBUG] Rendering house:", h);
+        renderHouse(h);
+      });
+
       page++;
       hasMore = houses.length === limit;
+      console.log("[DEBUG] hasMore:", hasMore, "next page:", page);
     } else {
-      console.error("Failed:", data);
+      console.error("[DEBUG] Failed response:", data);
     }
   } catch (err) {
-    console.error("Error:", err);
+    console.error("[DEBUG] Error fetching houses:", err);
   } finally {
     isLoading = false;
     document.getElementById("loader").style.display = "none";
@@ -62,6 +74,8 @@ function renderHouse(house) {
     ? house.cover_image
     : "https://via.placeholder.com/400x200";
 
+  console.log("[DEBUG] coverImage:", coverImage);
+
   card.innerHTML = `
     <img src="${coverImage}" alt="${house.name_boardinghouse}">
     <div class="info">
@@ -76,10 +90,12 @@ function renderHouse(house) {
   `;
 
   card.addEventListener("click", () => {
-    window.location.href = \`detail.html?id=${house.id}&university=${selectedUniversity || ''}&student_id=${studentId}\`;
+    console.log("[DEBUG] Card clicked:", house.id);
+    window.location.href = `detail.html?id=${house.id}&university=${selectedUniversity || ''}&student_id=${studentId}`;
   });
 
   document.getElementById("houseList").appendChild(card);
+  console.log("[DEBUG] Card appended for:", house.name_boardinghouse);
 }
 
 // Filter buttons
@@ -88,6 +104,7 @@ document.querySelectorAll(".filter").forEach(btn => {
     document.querySelectorAll(".filter").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     selectedFilter = btn.dataset.filter;
+    console.log("[DEBUG] Filter selected:", selectedFilter);
     fetchHouses(true);
   });
 });
@@ -95,12 +112,14 @@ document.querySelectorAll(".filter").forEach(btn => {
 // University dropdown
 document.getElementById("universitySelect").addEventListener("change", e => {
   selectedUniversity = e.target.value;
+  console.log("[DEBUG] University selected:", selectedUniversity);
   fetchHouses(true);
 });
 
 // Infinite scroll
 window.addEventListener("scroll", () => {
   if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 200) {
+    console.log("[DEBUG] Triggering infinite scroll fetch");
     fetchHouses();
   }
 });
