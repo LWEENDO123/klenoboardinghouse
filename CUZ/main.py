@@ -303,12 +303,7 @@ async def lenco_webhook(request: Request):
 
 
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-app.mount(
-    "/web",
-    StaticFiles(directory=os.path.join(BASE_DIR, "IOS.web"), html=True),
-    name="web"
-)
+
 
 
 
