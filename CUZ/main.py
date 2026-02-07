@@ -331,9 +331,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 @app.get("/index")
 async def serve_index():
     index_path = os.path.join(BASE_DIR, "IOS.web", "index.html")
-    return FileResponse(index_path)
-
-
+    return FileResponse(index_path, media_type="text/html")
 
 
 
