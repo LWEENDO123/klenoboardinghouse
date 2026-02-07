@@ -335,6 +335,12 @@ app.mount(
     name="static"
 )
 
+app.mount(
+    "/",
+    StaticFiles(directory=os.path.join(BASE_DIR, "IOS.web"), html=True),
+    name="root"
+)
+
 
 @app.get("/index")
 async def serve_index():
