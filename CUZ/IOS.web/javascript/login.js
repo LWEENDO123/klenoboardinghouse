@@ -38,12 +38,12 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
       localStorage.setItem("user_id", data.user_id);
       localStorage.setItem("university", data.university);
 
-      // Ensure a device_token is always present
-      if (data.device_token) {
-        localStorage.setItem("device_token", data.device_token);
-      } else {
-        localStorage.setItem("device_token", "web-" + Date.now());
+      // ✅ Safeguard: only generate fallback if backend didn’t send a device_token
+      let deviceToken = data.device_token;
+      if (!deviceToken) {
+        deviceToken = "web-" + Date.now();
       }
+      localStorage.setItem("device_token", deviceToken);
 
       // 🔹 Register device immediately after login
       try {
@@ -51,7 +51,7 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
           university: data.university,
           user_id: data.user_id,
           role: data.role,
-          device_token: localStorage.getItem("device_token"),
+          device_token: deviceToken,
           platform: "web"
         });
         console.log("Device registered successfully");
