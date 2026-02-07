@@ -280,64 +280,7 @@ async def student_union_signup(
 # ---------------------------
 # LOGIN
 # ---------------------------
-'''
-@router.post("/login")
-@limit("3/minute")
-async def login(
-    request: Request,
-    response: Response,
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    
-   
-):
-    """
-    Authenticate student, landlord, or student_union and issue JWT + CSRF token.
-    - Requires university query param for students and student_union.
-    """
-    university = request.query_params.get("university")
-    try:
-        if university:
-            user_data = await get_student_by_email(form_data.username, university)
-        else:
-            user_data = await get_landlord_by_email(form_data.username)
 
-        if not user_data or not verify_password(form_data.password, user_data["password"]):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email, password, or university",
-            )
-
-        access_token_expires = timedelta(minutes=30)
-        access_token = create_access_token(
-            data={
-                "sub": user_data["email"],
-                "role": user_data["role"],
-                "premium": user_data.get("premium", False),
-                "user_id": user_data["user_id"],
-                "university": user_data["university"],
-            },
-            expires_delta=access_token_expires,
-        )
-
-        
-        message = f"Logged in as {user_data['role'].capitalize()}"
-        if user_data.get("university"):
-            message += f" at {user_data['university']}"
-
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            
-            "message": message,
-            "role": user_data["role"],
-            "user_id": user_data["user_id"],
-            "university": user_data.get("university"),
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error logging in: {str(e)}")
-'''
 
 
 logger = logging.getLogger("uvicorn.error")
@@ -392,7 +335,7 @@ async def login(
                 "user_id": user_data["user_id"],
                 "university": user_data.get("university"),
             },
-            expires_delta=timedelta(days=1),   # 🔹 now 1 day expiry
+            expires_delta=timedelta(days=1),
         )
         logger.debug(f"Issued access token for user_id={user_data['user_id']} with 1 day expiry")
 
@@ -411,7 +354,18 @@ async def login(
         logger.debug(f"Issued refresh token for user_id={user_data['user_id']}")
 
         # ---------------------------
-        # Return both tokens
+        # Fetch existing device token if present
+        # ---------------------------
+        device_token = None
+        try:
+            device_doc = db.collection("DEVICES").document(user_data["user_id"]).get()
+            if device_doc.exists:
+                device_token = device_doc.to_dict().get("device_token")
+        except Exception as e:
+            logger.warning(f"Could not fetch device token for user_id={user_data['user_id']}: {e}")
+
+        # ---------------------------
+        # Return tokens + device token
         # ---------------------------
         return {
             "access_token": access_token,
@@ -421,7 +375,8 @@ async def login(
             "role": user_data["role"],
             "user_id": user_data["user_id"],
             "university": user_data.get("university"),
-            "expires_in": 24 * 60 * 60   # 🔹 1 day in seconds
+            "expires_in": 24 * 60 * 60,
+            "device_token": device_token,  # 🔹 include this
         }
 
     except HTTPException:
@@ -429,6 +384,7 @@ async def login(
     except Exception as e:
         logger.exception("Unexpected error during login")
         raise HTTPException(status_code=500, detail=f"Error logging in: {str(e)}")
+
 
 # ---------------------------
 # LOOKUPS
