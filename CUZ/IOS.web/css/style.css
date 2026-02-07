@@ -86,31 +86,57 @@ form button:hover {
   border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  aspect-ratio: 16 / 9; /* ✅ match Flutter AspectRatio */
+  background: #fff;
 }
 
 .house-card img {
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: cover; /* ✅ ensures image fills card */
   display: block;
 }
 
+/* Overlay info strip */
 .house-card .info {
   position: absolute;
   bottom: 0;
+  left: 0;
+  right: 0;
   background: rgba(0,0,0,0.6);
   color: white;
-  width: 100%;
-  padding: 8px;
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .house-card .info h3 {
   margin: 0;
   font-size: 16px;
+  font-weight: bold;
+  color: #fff;
 }
 
 .house-card .info p {
-  margin: 0;
+  margin: 2px 0 0;
   font-size: 12px;
+  color: #ddd;
+}
+
+/* Gender badge */
+.gender-badge {
+  background: #fff;
+  border-radius: 50%;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gender-badge img {
+  width: 20px;
+  height: 20px;
 }
 
 /* ---------- Loader ---------- */
@@ -270,7 +296,6 @@ form button:hover {
   line-height: 1.4;
 }
 
-
 /* ---------- Room Types Grid ---------- */
 .rooms {
   padding: 16px;
@@ -379,16 +404,3 @@ form button:hover {
     font-size: 20px;
   }
   .room-card img {
-    height: 120px;
-  }
-  .room-type {
-    font-size: 13px;
-  }
-  .room-price {
-    font-size: 12px;
-  }
-  .action-icon img {
-    width: 36px;
-    height: 36px;
-  }
-}
