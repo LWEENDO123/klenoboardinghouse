@@ -45,6 +45,9 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
       }
       localStorage.setItem("device_token", deviceToken);
 
+      // Debug log so you can confirm what’s being used
+      console.log("Device token being used:", deviceToken);
+
       // 🔹 Register device immediately after login
       try {
         await authorizedPost(`${baseUrl}/device/register`, {
