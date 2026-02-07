@@ -22,14 +22,20 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
     const data = await res.json();
     if (res.ok) {
       document.getElementById("message").textContent = "Login successful!";
-      // Save tokens to localStorage for later API calls
+
+      // Save tokens and context to localStorage
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("refresh_token", data.refresh_token);
       localStorage.setItem("role", data.role);
       localStorage.setItem("user_id", data.user_id);
       localStorage.setItem("university", data.university);
 
-      // Redirect to dashboard/home
+      // If backend returns a device_token, save it too
+      if (data.device_token) {
+        localStorage.setItem("device_token", data.device_token);
+      }
+
+      // Redirect to homepage
       window.location.href = "homepage.html";
     } else {
       document.getElementById("message").textContent = data.detail || "Login failed.";
