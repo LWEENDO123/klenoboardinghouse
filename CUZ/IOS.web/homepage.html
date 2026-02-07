@@ -5,8 +5,7 @@
   <title>Kleno Boarding Houses</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <link rel="stylesheet" href="/static/css/style.css">
-  <script src="/static/javascript/homepage.js"></script>
-
+  <script type="module" src="/static/javascript/homepage.js"></script>
 </head>
 <body>
   <!-- Header -->
@@ -35,11 +34,9 @@
   </div>
 
   <!-- Dynamic House Cards -->
-  <main class="house-list"><!-- populated by JS --></main>
+  <main id="houseList" class="house-list"><!-- populated by JS --></main>
 
   <!-- Loader -->
   <div id="loader" class="loader">Loading...</div>
-
-  <script src="javascript/homepage.js"></script>
 </body>
 </html>
