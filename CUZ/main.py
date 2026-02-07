@@ -14,7 +14,8 @@ from fastapi.staticfiles import StaticFiles
 # FastAPI core + responses
 from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse, Response
+from fastapi.responses import JSONResponse, StreamingResponse, Response, FileResponse
+
 
 # Third‑party
 from dateutil.relativedelta import relativedelta
