@@ -342,10 +342,7 @@ app.mount(
 )
 
 
-@app.get("/index")
-async def serve_index():
-    index_path = os.path.join(BASE_DIR, "IOS.web", "index.html")
-    return FileResponse(index_path, media_type="text/html")
+
 
 
 
