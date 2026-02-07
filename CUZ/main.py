@@ -326,8 +326,13 @@ app.include_router(store_router, dependencies=[Depends(get_current_user)])
 app.include_router(proxily_router, dependencies=[Depends(get_current_user)])
 app.include_router(lenco_router, dependencies=[Depends(get_current_user)])
 app.include_router(video_router)
-# Mount the ISO.web folder
-app.mount("/web", StaticFiles(directory="IOS.web", html=True), name="web")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app.mount(
+    "/web",
+    StaticFiles(directory=os.path.join(BASE_DIR, "IOS.web"), html=True),
+    name="web"
+)
+
 
 
 
