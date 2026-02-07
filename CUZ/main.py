@@ -10,7 +10,7 @@ import urllib.parse
 import hmac
 import hashlib
 from datetime import datetime
-
+from fastapi.staticfiles import StaticFiles
 # FastAPI core + responses
 from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
