@@ -1,3 +1,11 @@
+// Define baseUrl and apiKey here so they are available
+const baseUrl = "https://klenoboardinghouse-production.up.railway.app";
+const apiKey = "d17809df9e6c4e33801af1c5ee9d11da";
+
+// Import authorizedPost from tokenManager.js if using modules
+// If not using ES modules, make sure tokenManager.js is loaded before this script
+// import { authorizedPost } from "./tokenManager.js";
+
 document.getElementById("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
 
