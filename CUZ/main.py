@@ -327,11 +327,12 @@ app.include_router(proxily_router, dependencies=[Depends(get_current_user)])
 app.include_router(lenco_router, dependencies=[Depends(get_current_user)])
 app.include_router(video_router)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-app.mount(
-    "/web",
-    StaticFiles(directory=os.path.join(BASE_DIR, "IOS.web"), html=True),
-    name="web"
-)
+
+@app.get("/index")
+async def serve_index():
+    index_path = os.path.join(BASE_DIR, "IOS.web", "index.html")
+    return FileResponse(index_path)
+
 
 
 
