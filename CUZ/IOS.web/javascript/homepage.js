@@ -57,8 +57,13 @@ function renderHouse(house) {
     else if (g === "mixed") genderIcon = "both.png";
   }
 
+  // ✅ Use backend URL directly, only fallback if empty
+  const coverImage = house.cover_image && house.cover_image.startsWith("http")
+    ? house.cover_image
+    : "https://via.placeholder.com/400x200";
+
   card.innerHTML = `
-    <img src="${house.cover_image || 'https://via.placeholder.com/400x200'}" alt="${house.name_boardinghouse}">
+    <img src="${coverImage}" alt="${house.name_boardinghouse}">
     <div class="info">
       <div>
         <h3>${house.name_boardinghouse}</h3>
@@ -71,7 +76,7 @@ function renderHouse(house) {
   `;
 
   card.addEventListener("click", () => {
-    window.location.href = `detail.html?id=${house.id}&university=${selectedUniversity || ''}&student_id=${studentId}`;
+    window.location.href = \`detail.html?id=${house.id}&university=${selectedUniversity || ''}&student_id=${studentId}\`;
   });
 
   document.getElementById("houseList").appendChild(card);
