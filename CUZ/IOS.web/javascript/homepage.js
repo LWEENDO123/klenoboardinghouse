@@ -100,7 +100,8 @@ function renderHouse(house) {
     const uniParam = selectedUniversity || house.university || currentUserUniversity || "";
     // If uniParam is still empty, omit the university query param (backend will fallback to current_user)
     const uniQuery = uniParam ? `&university=${encodeURIComponent(uniParam)}` : "";
-    window.location.href = `/detail?id=${encodeURIComponent(house.id)}${uniQuery}&student_id=${encodeURIComponent(studentId)}`;
+    window.location.href = `/detail.html?id=${house.id}&university=${uniParam}&student_id=${studentId}`;
+
   });
 
   document.getElementById("houseList").appendChild(card);
