@@ -1,4 +1,4 @@
-import { authorizedGet } from "./tokenManager.js";  // make sure this path is correct
+import { authorizedGet } from "./tokenManager.js";
 
 let page = 1;
 const limit = 10;
@@ -7,9 +7,10 @@ let isLoading = false;
 let selectedFilter = "all";
 let selectedUniversity = "";
 const studentId = localStorage.getItem("user_id");
+const currentUserUniversity = localStorage.getItem("user_university") || ""; // fallback from localStorage
 const baseUrl = "https://klenoboardinghouse-production.up.railway.app";
 
-// ✅ Helper: normalize image URLs like Dart
+// Helper: normalize image URLs like Dart
 function normalizeImageUrl(url) {
   if (!url) return "https://via.placeholder.com/400x200";
   if (url.startsWith("http://") || url.startsWith("https://")) return url;
@@ -28,8 +29,8 @@ async function fetchHouses(refresh = false) {
   }
 
   const scope = selectedUniversity ? "scoped" : "default";
-  const uniParam = selectedUniversity ? `&university=${selectedUniversity}` : "";
-  const url = `${baseUrl}/home?student_id=${studentId}${uniParam}&scope=${scope}&page=${page}&limit=${limit}&filter=${selectedFilter}`;
+  const uniParam = selectedUniversity ? `&university=${encodeURIComponent(selectedUniversity)}` : "";
+  const url = `${baseUrl}/home?student_id=${encodeURIComponent(studentId)}${uniParam}&scope=${scope}&page=${page}&limit=${limit}&filter=${encodeURIComponent(selectedFilter)}`;
 
   console.log("[DEBUG] Fetching houses from:", url);
 
@@ -76,11 +77,9 @@ function renderHouse(house) {
     else if (g === "mixed") genderIcon = "both.png";
   }
 
-  // ✅ Normalize cover_image or image
+  // Normalize cover_image or image
   const rawCover = house.cover_image || house.image;
   const coverImage = normalizeImageUrl(rawCover);
-
-  console.log("[DEBUG] coverImage:", coverImage);
 
   card.innerHTML = `
     <img src="${coverImage}" alt="${house.name_boardinghouse}">
@@ -97,9 +96,11 @@ function renderHouse(house) {
 
   card.addEventListener("click", () => {
     console.log("[DEBUG] Card clicked:", house.id);
-    // ✅ Always send a valid university: use dropdown if selected, else fallback to house.university
-    const uniParam = selectedUniversity || house.university || "";
-    window.location.href = `/detail?id=${house.id}&university=${uniParam}&student_id=${studentId}`;
+    // Always send a valid university: dropdown -> house.university -> currentUserUniversity
+    const uniParam = selectedUniversity || house.university || currentUserUniversity || "";
+    // If uniParam is still empty, omit the university query param (backend will fallback to current_user)
+    const uniQuery = uniParam ? `&university=${encodeURIComponent(uniParam)}` : "";
+    window.location.href = `/detail?id=${encodeURIComponent(house.id)}${uniQuery}&student_id=${encodeURIComponent(studentId)}`;
   });
 
   document.getElementById("houseList").appendChild(card);
@@ -118,11 +119,14 @@ document.querySelectorAll(".filter").forEach(btn => {
 });
 
 // University dropdown
-document.getElementById("universitySelect").addEventListener("change", e => {
-  selectedUniversity = e.target.value;
-  console.log("[DEBUG] University selected:", selectedUniversity);
-  fetchHouses(true);
-});
+const uniSelect = document.getElementById("universitySelect");
+if (uniSelect) {
+  uniSelect.addEventListener("change", e => {
+    selectedUniversity = e.target.value;
+    console.log("[DEBUG] University selected:", selectedUniversity);
+    fetchHouses(true);
+  });
+}
 
 // Infinite scroll
 window.addEventListener("scroll", () => {
