@@ -704,6 +704,9 @@ async def get_media_proxy(file_path: str, request: Request):
     Supports Range requests for efficient video streaming.
     """
     try:
+        # ✅ Log the incoming request path
+        logger.debug(f"[MEDIA PROXY] Requested file_path={file_path}")
+
         # 1. Fetch object metadata
         head = s3_client.head_object(Bucket=RAILWAY_BUCKET, Key=file_path)
         file_size = head["ContentLength"]
@@ -713,6 +716,7 @@ async def get_media_proxy(file_path: str, request: Request):
         range_header = request.headers.get("range")
         if range_header:
             try:
+                logger.debug(f"[MEDIA PROXY] Range header={range_header}")
                 # Parse Range header: e.g. "bytes=0-1023"
                 range_value = range_header.strip().lower().replace("bytes=", "")
                 start_str, end_str = range_value.split("-")
@@ -745,7 +749,7 @@ async def get_media_proxy(file_path: str, request: Request):
                     },
                 )
             except Exception as e:
-                logger.error(f"Range request parsing failed: {e}")
+                logger.error(f"[MEDIA PROXY] Range request parsing failed: {e}")
                 raise HTTPException(status_code=400, detail="Invalid Range header")
 
         # 3. No Range header → stream whole file
@@ -762,12 +766,10 @@ async def get_media_proxy(file_path: str, request: Request):
         )
 
     except s3_client.exceptions.NoSuchKey:
-        raise HTTPException(status_code=404, detail=f"File not found")
+        logger.warning(f"[MEDIA PROXY] NoSuchKey for {file_path}")
+        raise HTTPException(status_code=404, detail="File not found")
     except Exception as e:
-        logger.error(f"Proxy streaming error for {file_path}: {e}", exc_info=True)
+        logger.error(f"[MEDIA PROXY] Proxy streaming error for {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching file")
-
-
-
 
 
