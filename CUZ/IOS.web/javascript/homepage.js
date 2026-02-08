@@ -97,7 +97,9 @@ function renderHouse(house) {
 
   card.addEventListener("click", () => {
     console.log("[DEBUG] Card clicked:", house.id);
-    window.location.href = `detail.html?id=${house.id}&university=${selectedUniversity || ''}&student_id=${studentId}`;
+    // ✅ Always send a valid university: use dropdown if selected, else fallback to house.university or current_user
+    const uniParam = selectedUniversity || house.university || "default";
+    window.location.href = `/detail?id=${house.id}&university=${uniParam}&student_id=${studentId}`;
   });
 
   document.getElementById("houseList").appendChild(card);
