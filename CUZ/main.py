@@ -729,6 +729,8 @@ import os
 from fastapi import Request, HTTPException
 from fastapi.responses import Response, StreamingResponse
 
+import mimetypes
+
 @app.get("/media/{file_path:path}")
 async def get_media_proxy(file_path: str, request: Request):
     """
@@ -741,9 +743,7 @@ async def get_media_proxy(file_path: str, request: Request):
         logger.debug(f"[MEDIA PROXY] Raw requested file_path={file_path}")
 
         # ✅ Normalize Firestore full URLs into S3 keys
-        # Strip domain if Firestore stored full URL
         if file_path.startswith("http://") or file_path.startswith("https://"):
-            # Remove domain and leading /media/
             parsed = file_path.split("/media/", 1)
             if len(parsed) == 2:
                 file_path = parsed[1]
@@ -758,20 +758,22 @@ async def get_media_proxy(file_path: str, request: Request):
         # 1. Fetch object metadata
         head = s3_client.head_object(Bucket=RAILWAY_BUCKET, Key=file_path)
         file_size = head["ContentLength"]
-        content_type = head.get("ContentType", "application/octet-stream")
+
+        # ✅ Guess MIME type from file extension
+        guessed_type, _ = mimetypes.guess_type(file_path)
+        content_type = guessed_type or head.get("ContentType", "application/octet-stream")
+        logger.debug(f"[MEDIA PROXY] Serving {file_path} with Content-Type={content_type}")
 
         # 2. Check for Range header
         range_header = request.headers.get("range")
         if range_header:
             try:
                 logger.debug(f"[MEDIA PROXY] Range header={range_header}")
-                # Parse Range header: e.g. "bytes=0-1023"
                 range_value = range_header.strip().lower().replace("bytes=", "")
                 start_str, end_str = range_value.split("-")
                 start = int(start_str) if start_str else 0
                 end = int(end_str) if end_str else file_size - 1
 
-                # Clamp values
                 if start < 0:
                     start = 0
                 if end >= file_size:
@@ -779,7 +781,6 @@ async def get_media_proxy(file_path: str, request: Request):
 
                 length = end - start + 1
 
-                # Fetch partial content from S3
                 obj = s3_client.get_object(
                     Bucket=RAILWAY_BUCKET,
                     Key=file_path,
@@ -819,6 +820,7 @@ async def get_media_proxy(file_path: str, request: Request):
     except Exception as e:
         logger.error(f"[MEDIA PROXY] Proxy streaming error for {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching file")
+
 
 
 
