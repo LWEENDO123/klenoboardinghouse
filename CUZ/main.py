@@ -359,16 +359,38 @@ app.include_router(video_router)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates_dir = os.path.join(BASE_DIR, "IOS.web")
 
-# Serve static assets under /static
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-templates_dir = os.path.join(BASE_DIR, "IOS.web")
-
-# Serve everything in IOS.web under root (HTML, CSS, JS, images)
+# Serve all HTML, CSS, JS, and assets under /static
 app.mount(
-    "/",
+    "/static",
     StaticFiles(directory=templates_dir, html=True),
-    name="web"
+    name="static"
 )
+
+# Explicit routes for HTML templates
+@app.get("/")
+async def serve_index():
+    return FileResponse(os.path.join(templates_dir, "index.html"), media_type="text/html")
+
+@app.get("/homepage")
+async def serve_homepage():
+    return FileResponse(os.path.join(templates_dir, "homepage.html"), media_type="text/html")
+
+@app.get("/login")
+async def serve_login():
+    return FileResponse(os.path.join(templates_dir, "login.html"), media_type="text/html")
+
+@app.get("/signup")
+async def serve_signup():
+    return FileResponse(os.path.join(templates_dir, "signup.html"), media_type="text/html")
+
+@app.get("/detail")
+async def serve_detail():
+    return FileResponse(os.path.join(templates_dir, "detail.html"), media_type="text/html")
+
+@app.get("/sliders")
+async def serve_sliders():
+    return FileResponse(os.path.join(templates_dir, "sliders.html"), media_type="text/html")
+
 
 
 
