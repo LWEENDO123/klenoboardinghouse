@@ -360,24 +360,16 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates_dir = os.path.join(BASE_DIR, "IOS.web")
 
 # Serve static assets under /static
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+templates_dir = os.path.join(BASE_DIR, "IOS.web")
+
+# Serve everything in IOS.web under root (HTML, CSS, JS, images)
 app.mount(
-    "/static",
+    "/",
     StaticFiles(directory=templates_dir, html=True),
-    name="static"
+    name="web"
 )
 
-# Explicit routes for your HTML templates
-@app.get("/homepage.html")
-async def serve_homepage():
-    return FileResponse(os.path.join(templates_dir, "homepage.html"), media_type="text/html")
-
-@app.get("/login.html")
-async def serve_login():
-    return FileResponse(os.path.join(templates_dir, "login.html"), media_type="text/html")
-
-@app.get("/index.html")
-async def serve_index():
-    return FileResponse(os.path.join(templates_dir, "index.html"), media_type="text/html")
 
 
 
