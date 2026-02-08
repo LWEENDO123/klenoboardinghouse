@@ -358,22 +358,19 @@ app.include_router(lenco_router, dependencies=[Depends(get_current_user)])
 app.include_router(video_router)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Serve static assets only under /static
 app.mount(
     "/static",
     StaticFiles(directory=os.path.join(BASE_DIR, "IOS.web"), html=True),
     name="static"
 )
 
-app.mount(
-    "/",
-    StaticFiles(directory=os.path.join(BASE_DIR, "IOS.web"), html=True),
-    name="root"
-)
-
+# Explicit index route for homepage
 @app.get("/index")
 async def serve_index():
     index_path = os.path.join(BASE_DIR, "IOS.web", "index.html")
     return FileResponse(index_path, media_type="text/html")
+
 
 
 
@@ -817,6 +814,10 @@ async def get_media_proxy(file_path: str, request: Request):
     except Exception as e:
         logger.error(f"[MEDIA PROXY] Proxy streaming error for {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching file")
+
+
+
+
 
 
 
