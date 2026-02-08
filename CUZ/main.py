@@ -697,19 +697,28 @@ async def register_fcm(
 
 logger = logging.getLogger("media_proxy")
 
+import os
+from fastapi import Request, HTTPException
+from fastapi.responses import Response, StreamingResponse
+
 @app.get("/media/{file_path:path}")
 async def get_media_proxy(file_path: str, request: Request):
     """
     Proxy endpoint for serving media (images/videos) from S3.
     Supports Range requests for efficient video streaming.
+    Normalizes Firestore-stored URLs into valid S3 keys.
     """
     try:
         # ✅ Log the incoming request path
-        logger.debug(f"[MEDIA PROXY] Requested file_path={file_path}")
+        logger.debug(f"[MEDIA PROXY] Raw requested file_path={file_path}")
 
-        # ✅ If Firestore stored full URLs, strip domain + /media/ prefix
-        if file_path.startswith("klenoboardinghouse-production.up.railway.app/media/"):
-            file_path = file_path.replace("klenoboardinghouse-production.up.railway.app/media/", "")
+        # ✅ Normalize Firestore full URLs into S3 keys
+        # Strip domain if Firestore stored full URL
+        if file_path.startswith("http://") or file_path.startswith("https://"):
+            # Remove domain and leading /media/
+            parsed = file_path.split("/media/", 1)
+            if len(parsed) == 2:
+                file_path = parsed[1]
             logger.debug(f"[MEDIA PROXY] Normalized file_path={file_path}")
 
         # ✅ List objects under the same prefix to debug what exists
@@ -782,6 +791,7 @@ async def get_media_proxy(file_path: str, request: Request):
     except Exception as e:
         logger.error(f"[MEDIA PROXY] Proxy streaming error for {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching file")
+
 
 
 
