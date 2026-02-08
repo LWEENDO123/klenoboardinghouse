@@ -357,19 +357,27 @@ app.include_router(proxily_router, dependencies=[Depends(get_current_user)])
 app.include_router(lenco_router, dependencies=[Depends(get_current_user)])
 app.include_router(video_router)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Serve static assets only under /static
+templates_dir = os.path.join(BASE_DIR, "IOS.web")
+
+# Serve static assets under /static
 app.mount(
     "/static",
-    StaticFiles(directory=os.path.join(BASE_DIR, "IOS.web"), html=True),
+    StaticFiles(directory=templates_dir, html=True),
     name="static"
 )
 
-# Explicit index route for homepage
-@app.get("/index")
+# Explicit routes for your HTML templates
+@app.get("/homepage.html")
+async def serve_homepage():
+    return FileResponse(os.path.join(templates_dir, "homepage.html"), media_type="text/html")
+
+@app.get("/login.html")
+async def serve_login():
+    return FileResponse(os.path.join(templates_dir, "login.html"), media_type="text/html")
+
+@app.get("/index.html")
 async def serve_index():
-    index_path = os.path.join(BASE_DIR, "IOS.web", "index.html")
-    return FileResponse(index_path, media_type="text/html")
+    return FileResponse(os.path.join(templates_dir, "index.html"), media_type="text/html")
 
 
 
