@@ -9,10 +9,10 @@ let selectedUniversity = "";
 const studentId = localStorage.getItem("user_id");
 const baseUrl = "https://klenoboardinghouse-production.up.railway.app";
 
-// ✅ Helper: normalize image URLs
+// ✅ Helper: normalize image URLs like Dart
 function normalizeImageUrl(url) {
-  if (!url) return null;
-  if (url.startsWith("http")) return url;
+  if (!url) return "https://via.placeholder.com/400x200";
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
   return `https://${url}`;
 }
 
@@ -78,7 +78,7 @@ function renderHouse(house) {
 
   // ✅ Normalize cover_image or image
   const rawCover = house.cover_image || house.image;
-  const coverImage = normalizeImageUrl(rawCover) || "https://via.placeholder.com/400x200";
+  const coverImage = normalizeImageUrl(rawCover);
 
   console.log("[DEBUG] coverImage:", coverImage);
 
@@ -90,7 +90,6 @@ function renderHouse(house) {
         <p>📍 ${house.location || ''}</p>
       </div>
       <div class="gender-badge">
-        <!-- ✅ Correct path: /static/assets/icons -->
         <img src="/static/assets/icons/${genderIcon}" alt="${house.gender || 'both'}">
       </div>
     </div>
