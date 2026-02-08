@@ -5,7 +5,9 @@ from typing import Optional, List
 from datetime import datetime
 
 from fastapi import APIRouter, Query, Depends, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi.rimport logging
+from CUZ.yearbook.profile.storage import s3_client, RAILWAY_BUCKET 
+
 
 
 from CUZ.USERS.firebase import db
@@ -23,6 +25,29 @@ REGIONS = {
     "lusaka_west": ["UNZAM", "CUZM"],
     # add other regions as needed
 }
+
+
+
+logger = logging.getLogger("bucket_inspect")
+
+def list_admin_bucket_contents():
+    try:
+        prefix = "ALL/adminL-id/"
+        resp = s3_client.list_objects_v2(Bucket=RAILWAY_BUCKET, Prefix=prefix)
+        contents = resp.get("Contents", [])
+        if not contents:
+            logger.warning(f"No objects found under prefix {prefix}")
+            return []
+
+        keys = [obj["Key"] for obj in contents]
+        logger.info(f"Found {len(keys)} objects under {prefix}")
+        for k in keys:
+            print(k)
+        return keys
+    except Exception as e:
+        logger.exception(f"Error listing bucket contents: {e}")
+        return []
+
 
 
 # -------------------------
