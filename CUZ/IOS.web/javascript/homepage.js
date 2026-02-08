@@ -69,9 +69,10 @@ function renderHouse(house) {
     else if (g === "mixed") genderIcon = "both.png";
   }
 
-  // ✅ Use backend URL directly, only fallback if empty
-  const coverImage = house.cover_image && house.cover_image.startsWith("http")
-    ? house.cover_image
+  // ✅ Handle both cover_image and coverImage field names
+  const rawCover = house.cover_image || house.coverImage;
+  const coverImage = rawCover && rawCover.startsWith("http")
+    ? rawCover
     : "https://via.placeholder.com/400x200";
 
   console.log("[DEBUG] coverImage:", coverImage);
@@ -84,7 +85,8 @@ function renderHouse(house) {
         <p>📍 ${house.location || ''}</p>
       </div>
       <div class="gender-badge">
-        <img src="assets/images/icons/${genderIcon}" alt="${house.gender || 'both'}">
+        <!-- ✅ Correct path: /static/assets/icons -->
+        <img src="/static/assets/icons/${genderIcon}" alt="${house.gender || 'both'}">
       </div>
     </div>
   `;
