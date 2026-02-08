@@ -755,14 +755,14 @@ async def get_media_proxy(file_path: str, request: Request):
     try:
         logger.debug(f"[MEDIA PROXY] Raw requested file_path={file_path}")
 
-        # If Firestore stored full URL, drop domain and /media/
+        # If Firestore stored a full URL, drop domain and /media/
         if file_path.startswith("http://") or file_path.startswith("https://"):
             parsed = file_path.split("/media/", 1)
             if len(parsed) == 2:
                 file_path = parsed[1]
             logger.debug(f"[MEDIA PROXY] Normalized from full URL → {file_path}")
 
-        # ✅ At this point FastAPI already strips "/media/" from the route,
+        # At this point FastAPI already strips "/media/" from the route,
         # so file_path should be "ALL/adminL-id/...". No need to strip again.
         logger.debug(f"[MEDIA PROXY] Final S3 key → {file_path}")
         logger.debug(f"[MEDIA PROXY] Using bucket={RAILWAY_BUCKET}")
@@ -783,21 +783,14 @@ async def get_media_proxy(file_path: str, request: Request):
         logger.debug(f"[MEDIA PROXY] Serving {file_path} with Content-Type={content_type}")
 
         # Decide headers
-        if content_type.startswith("image/") or content_type.startswith("video/"):
-            base_headers = {
-                "Content-Length": str(file_size),
-                "Accept-Ranges": "bytes",
-                "Cache-Control": "public, max-age=31536000",
-                "X-Content-Type-Options": "nosniff",
-            }
-        else:
-            base_headers = {
-                "Content-Length": str(file_size),
-                "Accept-Ranges": "bytes",
-                "Cache-Control": "public, max-age=31536000",
-                "X-Content-Type-Options": "nosniff",
-                "Content-Disposition": f'attachment; filename="{os.path.basename(file_path)}"',
-            }
+        base_headers = {
+            "Content-Length": str(file_size),
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=31536000",
+            "X-Content-Type-Options": "nosniff",
+        }
+        if not (content_type.startswith("image/") or content_type.startswith("video/")):
+            base_headers["Content-Disposition"] = f'attachment; filename="{os.path.basename(file_path)}"'
 
         # Handle Range requests
         range_header = request.headers.get("range")
@@ -808,7 +801,6 @@ async def get_media_proxy(file_path: str, request: Request):
             end = int(end_str) if end_str else file_size - 1
             if start < 0: start = 0
             if end >= file_size: end = file_size - 1
-            length = end - start + 1
 
             obj = s3_client.get_object(
                 Bucket=RAILWAY_BUCKET,
@@ -836,6 +828,7 @@ async def get_media_proxy(file_path: str, request: Request):
     except Exception as e:
         logger.error(f"[MEDIA PROXY] Proxy streaming error for {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching file")
+
 
 
 
