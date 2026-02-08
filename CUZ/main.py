@@ -728,12 +728,6 @@ logger = logging.getLogger("media_proxy")
 
 
 
-
-
-
-
-
-
 @app.get("/media/{file_path:path}")
 async def get_media_proxy(file_path: str, request: Request):
     """
@@ -744,19 +738,20 @@ async def get_media_proxy(file_path: str, request: Request):
     try:
         logger.debug(f"[MEDIA PROXY] Raw requested file_path={file_path}")
 
-        # Normalize Firestore full URLs into S3 keys
+        # ✅ Normalize Firestore full URLs into S3 keys
         if file_path.startswith("http://") or file_path.startswith("https://"):
+            # Drop domain and everything before /media/
             parsed = file_path.split("/media/", 1)
             if len(parsed) == 2:
                 file_path = parsed[1]
-            logger.debug(f"[MEDIA PROXY] Normalized file_path={file_path}")
+            logger.debug(f"[MEDIA PROXY] Normalized from full URL → {file_path}")
 
         # ✅ Strip leading "media/" if present
         if file_path.startswith("media/"):
             file_path = file_path[len("media/"):]
             logger.debug(f"[MEDIA PROXY] Removed leading 'media/': {file_path}")
 
-        # List objects under the same prefix to debug
+        # Debug: list objects under the same prefix
         prefix = os.path.dirname(file_path)
         resp = s3_client.list_objects_v2(Bucket=RAILWAY_BUCKET, Prefix=prefix)
         keys = [obj["Key"] for obj in resp.get("Contents", [])]
@@ -838,6 +833,7 @@ async def get_media_proxy(file_path: str, request: Request):
     except Exception as e:
         logger.error(f"[MEDIA PROXY] Proxy streaming error for {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching file")
+
 
 
 
