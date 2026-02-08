@@ -732,6 +732,8 @@ logger = logging.getLogger("media_proxy")
 
 
 
+
+
 @app.get("/media/{file_path:path}")
 async def get_media_proxy(file_path: str, request: Request):
     """
@@ -748,6 +750,11 @@ async def get_media_proxy(file_path: str, request: Request):
             if len(parsed) == 2:
                 file_path = parsed[1]
             logger.debug(f"[MEDIA PROXY] Normalized file_path={file_path}")
+
+        # ✅ Strip leading "media/" if present
+        if file_path.startswith("media/"):
+            file_path = file_path[len("media/"):]
+            logger.debug(f"[MEDIA PROXY] Removed leading 'media/': {file_path}")
 
         # List objects under the same prefix to debug
         prefix = os.path.dirname(file_path)
@@ -831,6 +838,7 @@ async def get_media_proxy(file_path: str, request: Request):
     except Exception as e:
         logger.error(f"[MEDIA PROXY] Proxy streaming error for {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching file")
+
 
 
 
