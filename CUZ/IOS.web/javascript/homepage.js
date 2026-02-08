@@ -69,8 +69,8 @@ function renderHouse(house) {
     else if (g === "mixed") genderIcon = "both.png";
   }
 
-  // ✅ Handle both cover_image and coverImage field names
-  const rawCover = house.cover_image || house.coverImage;
+  // ✅ Handle both cover_image and image fields
+  const rawCover = house.cover_image || house.image;
   const coverImage = rawCover && rawCover.startsWith("http")
     ? rawCover
     : "https://via.placeholder.com/400x200";
