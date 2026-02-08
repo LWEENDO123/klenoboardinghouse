@@ -814,7 +814,7 @@ async def get_media_proxy(file_path: str, request: Request):
         logger.error(f"[MEDIA PROXY] Proxy streaming error for {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching file")
 
-}
+
 
 
 
