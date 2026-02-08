@@ -5,9 +5,6 @@ let slides = [];
 const baseUrl = "https://klenoboardinghouse-production.up.railway.app";
 const currentUserUniversity = localStorage.getItem("user_university") || ""; // fallback
 
-/**
- * Render navigation dots for the gallery
- */
 function renderDots() {
   const dotsContainer = document.querySelector(".dots");
   if (!dotsContainer) return;
@@ -20,9 +17,6 @@ function renderDots() {
   });
 }
 
-/**
- * Show a specific slide in the gallery
- */
 function showSlide(index) {
   const slider = document.querySelector(".gallery-slider");
   if (!slider) return;
@@ -33,9 +27,6 @@ function showSlide(index) {
   renderDots();
 }
 
-/**
- * Load boarding house details from backend
- */
 async function loadBoardingHouse(id, university, studentId) {
   try {
     if (!id || !studentId) {
@@ -43,13 +34,19 @@ async function loadBoardingHouse(id, university, studentId) {
       return;
     }
 
-    // Determine university to send: prefer query param, else currentUserUniversity, else omit
-    let uniToSend = university && university !== "default" ? university : (currentUserUniversity || "");
-    const uniQuery = uniToSend ? `&university=${encodeURIComponent(uniToSend)}` : "";
-    const url = `${baseUrl}/home/boardinghouse/${encodeURIComponent(id)}?student_id=${encodeURIComponent(studentId)}${uniQuery}`;
+    // ✅ Always send a valid university
+    let uniToSend = university && university !== "default"
+      ? university
+      : (currentUserUniversity || "");
+
+    if (!uniToSend) {
+      alert("Missing university parameter");
+      return;
+    }
+
+    const url = `${baseUrl}/home/boardinghouse/${encodeURIComponent(id)}?student_id=${encodeURIComponent(studentId)}&university=${encodeURIComponent(uniToSend)}`;
 
     console.log("[DEBUG] Fetching detail from:", url);
-    // Use authorizedGet so auth headers are included
     const res = await authorizedGet(url);
     console.log("[DEBUG] Detail response status:", res.status);
 
@@ -67,33 +64,26 @@ async function loadBoardingHouse(id, university, studentId) {
     const data = await res.json();
     console.log("[DEBUG] Detail JSON:", data);
 
-    // Name + location
+    // Populate UI
     document.querySelector(".house-name").textContent = data.name_boardinghouse || data.name || "";
     document.querySelector(".location").textContent = "📍 " + (data.location || "");
 
-    // Phone
     const phoneAnchor = document.querySelector(".action-icon.phone");
-    if (phoneAnchor && data.phone_number) {
-      phoneAnchor.href = `tel:${data.phone_number}`;
-    }
+    if (phoneAnchor && data.phone_number) phoneAnchor.href = `tel:${data.phone_number}`;
 
-    // Google Maps
     const googleAnchor = document.querySelector(".action-icon.google");
-    if (googleAnchor && data.GPS_coordinates && data.GPS_coordinates.lat && data.GPS_coordinates.lon) {
+    if (googleAnchor && data.GPS_coordinates?.lat && data.GPS_coordinates?.lon) {
       googleAnchor.href = `https://maps.google.com/?q=${data.GPS_coordinates.lat},${data.GPS_coordinates.lon}`;
     }
 
-    // Yango
     const yangoAnchor = document.querySelector(".action-icon.yango");
-    if (yangoAnchor && data.yango_coordinates && data.yango_coordinates.lat && data.yango_coordinates.lon) {
+    if (yangoAnchor && data.yango_coordinates?.lat && data.yango_coordinates?.lon) {
       yangoAnchor.href = `https://yango.com/?coords=${data.yango_coordinates.lat},${data.yango_coordinates.lon}`;
     }
 
-    // Bus stop (placeholder)
     const busAnchor = document.querySelector(".action-icon.bus");
     if (busAnchor) busAnchor.href = "#";
 
-    // Gallery
     const gallerySlider = document.querySelector(".gallery-slider");
     if (gallerySlider) {
       gallerySlider.innerHTML = "";
@@ -101,11 +91,9 @@ async function loadBoardingHouse(id, university, studentId) {
       (data.gallery || []).forEach(item => {
         const slide = document.createElement("div");
         slide.className = "slide";
-        if (item.type === "video") {
-          slide.innerHTML = `<video controls src="${item.url}"></video>`;
-        } else {
-          slide.innerHTML = `<img src="${item.url}" alt="${item.caption || 'Gallery'}">`;
-        }
+        slide.innerHTML = item.type === "video"
+          ? `<video controls src="${item.url}"></video>`
+          : `<img src="${item.url}" alt="${item.caption || 'Gallery'}">`;
         gallerySlider.appendChild(slide);
         slides.push(slide);
       });
@@ -113,7 +101,6 @@ async function loadBoardingHouse(id, university, studentId) {
       renderDots();
     }
 
-    // Auto cycle (clear previous interval if any)
     if (window._detailAutoCycleInterval) clearInterval(window._detailAutoCycleInterval);
     window._detailAutoCycleInterval = setInterval(() => {
       if (slides.length === 0) return;
@@ -121,15 +108,9 @@ async function loadBoardingHouse(id, university, studentId) {
       showSlide(next);
     }, 5000);
 
-    // Space overview
-    const spaceEl = document.querySelector(".space-description");
-    if (spaceEl) spaceEl.textContent = data.space_description || "";
+    document.querySelector(".space-description").textContent = data.space_description || "";
+    document.querySelector(".conditions").textContent = data.conditions || "";
 
-    // Conditions
-    const condEl = document.querySelector(".conditions");
-    if (condEl) condEl.textContent = data.conditions || "";
-
-    // Amenities
     const amenitiesList = document.querySelector(".amenities-list");
     if (amenitiesList) {
       amenitiesList.innerHTML = "";
@@ -140,7 +121,6 @@ async function loadBoardingHouse(id, university, studentId) {
       });
     }
 
-    // Rooms
     const grid = document.querySelector(".rooms .grid");
     if (grid) {
       grid.innerHTML = "";
@@ -154,11 +134,10 @@ async function loadBoardingHouse(id, university, studentId) {
         {type:"Single Room", price:data.price_1, status:data.singleroom, image:data.image_1},
       ];
       roomDefs.forEach(r => {
-        if (!r.type) return;
         const card = document.createElement("div");
         card.className = "room-card";
-        const badgeClass = (r.status && r.status.toString().toUpperCase() === 'AVAILABLE') ? 'available'
-                         : (r.status && r.status.toString().toUpperCase() === 'UNAVAILABLE') ? 'unavailable'
+        const badgeClass = (r.status?.toUpperCase() === 'AVAILABLE') ? 'available'
+                         : (r.status?.toUpperCase() === 'UNAVAILABLE') ? 'unavailable'
                          : 'not-supported';
         card.innerHTML = `
           <img src="${r.image || '/static/assets/images/placeholder.jpg'}" alt="${r.type}">
@@ -179,13 +158,12 @@ async function loadBoardingHouse(id, university, studentId) {
   }
 }
 
-// Parse query params from URL and load actual data
+// Parse query params
 const params = new URLSearchParams(window.location.search);
 const houseId = params.get("id");
 const university = params.get("university");
 const studentId = params.get("student_id");
 
-// If university is empty string, treat as missing and let loadBoardingHouse fallback to currentUserUniversity
 if (houseId && studentId) {
   loadBoardingHouse(houseId, university, studentId);
 } else {
