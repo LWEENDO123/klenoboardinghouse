@@ -383,9 +383,10 @@ async def serve_login():
 async def serve_signup():
     return FileResponse(os.path.join(templates_dir, "signup.html"), media_type="text/html")
 
-@app.get("/detail")
+@app.get("/detail.html")
 async def serve_detail():
     return FileResponse(os.path.join(templates_dir, "detail.html"), media_type="text/html")
+
 
 @app.get("/sliders")
 async def serve_sliders():
