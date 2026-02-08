@@ -24,6 +24,53 @@ REGIONS = {
     # add other regions as needed
 }
 
+
+# -------------------------
+# Helper: Normalize Firestore media URLs
+def normalize_media_url(url: str) -> str:
+    """
+    Normalize Firestore-stored media URLs into clean /media/{key} paths.
+    """
+    if not url:
+        return None
+    if url.startswith("http://") or url.startswith("https://"):
+        if "/media/" in url:
+            url = url.split("/media/", 1)[1]
+    return f"/media/{url}" if not url.startswith("/media/") else url
+
+
+# -------------------------
+# Shared helper: normalize documents and build homepage response
+def normalize_and_build_response(boardinghouses_docs, page: int, limit: int, filter: str):
+    houses = []
+    for doc in boardinghouses_docs or []:
+        try:
+            raw = doc.to_dict() or {}
+        except Exception:
+            logger.exception("Failed to parse Firestore doc id=%s", getattr(doc, "id", "<unknown>"))
+            continue
+
+        doc_id = getattr(doc, "id", raw.get("id", ""))
+
+        safe = {
+            "id": str(doc_id),
+            "name": raw.get("name") or raw.get("name_boardinghouse") or "Unnamed",
+            # ✅ Normalize media fields
+            "cover_image": normalize_media_url(raw.get("cover_image") or raw.get("image")),
+            "gallery_images": [normalize_media_url(x) for x in (raw.get("gallery_images") or raw.get("images") or [])],
+            "location": raw.get("location") or "",
+            "rating": raw.get("rating") if isinstance(raw.get("rating"), (int, float)) else None,
+            "type": raw.get("type") or "boardinghouse",
+            "gender_male": bool(raw.get("gender_male")),
+            "gender_female": bool(raw.get("gender_female")),
+            "gender_both": bool(raw.get("gender_both")),
+            "teaser_video": normalize_media_url(raw.get("teaser_video") or raw.get("video")),
+        }
+        houses.append(safe)
+
+    # ... keep the rest of your pagination and homepage shaping logic unchanged ...
+
+
 # ---------------------------
 # Helper: Validate student identity
 def validate_student_identity(university: str, student_id: str, requester_uni: Optional[str] = None, allow_cross_university: bool = False) -> bool:
