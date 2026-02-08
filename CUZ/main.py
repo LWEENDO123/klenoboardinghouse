@@ -726,7 +726,6 @@ async def register_fcm(
 
 logger = logging.getLogger("media_proxy")
 
-
 @app.get("/media/{file_path:path}")
 async def get_media_proxy(file_path: str, request: Request):
     """
@@ -744,13 +743,10 @@ async def get_media_proxy(file_path: str, request: Request):
                 file_path = parsed[1]
             logger.debug(f"[MEDIA PROXY] Normalized from full URL → {file_path}")
 
-        # ✅ Ensure we never keep a leading "media/" segment
-        if file_path.startswith("media/"):
-            file_path = file_path[len("media/"):]
-            logger.debug(f"[MEDIA PROXY] Removed leading 'media/': {file_path}")
-
-        # Final normalized key
+        # ✅ At this point FastAPI already strips "/media/" from the route,
+        # so file_path should be "ALL/adminL-id/...". No need to strip again.
         logger.debug(f"[MEDIA PROXY] Final S3 key → {file_path}")
+        logger.debug(f"[MEDIA PROXY] Using bucket={RAILWAY_BUCKET}")
 
         # List objects under the same prefix to debug
         prefix = os.path.dirname(file_path)
@@ -821,6 +817,7 @@ async def get_media_proxy(file_path: str, request: Request):
     except Exception as e:
         logger.error(f"[MEDIA PROXY] Proxy streaming error for {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching file")
+
 
 
 
