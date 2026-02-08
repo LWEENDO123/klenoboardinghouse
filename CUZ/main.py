@@ -305,6 +305,25 @@ async def lenco_webhook(request: Request):
 
 
 
+# Debug routes
+@debug_router.post("/headers")
+async def debug_headers(request: Request):
+    return {
+        "authorization": request.headers.get("authorization"),
+        "x_api_key": request.headers.get("x-api-key"),
+        "host": request.headers.get("host"),
+    }
+
+@debug_router.get("/bucket")
+async def debug_bucket():
+    """
+    Debug endpoint to list objects under ALL/adminL-id/ in the bucket.
+    """
+    keys = list_admin_bucket_contents()
+    return {"keys": keys}
+
+
+
 
 
 
@@ -313,7 +332,9 @@ async def lenco_webhook(request: Request):
 # Always available (no auth required)
 app.include_router(debug_router)
 app.include_router(user_router)        # login/signup open
-app.include_router(webhook_router)     # webhook open
+app.include_router(webhook_router)  # webhook open
+
+
 
 # Protected routers (require JWT Bearer token)
 app.include_router(messages_router, dependencies=[Depends(get_current_user)])
@@ -793,18 +814,7 @@ async def get_media_proxy(file_path: str, request: Request):
         logger.error(f"[MEDIA PROXY] Proxy streaming error for {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching file")
 
-# In CUZ/main.py
-
-
-
-# Add a debug endpoint
-@debug_router.get("/bucket")
-async def debug_bucket():
-    """
-    Debug endpoint to list objects under ALL/adminL-id/ in the bucket.
-    """
-    keys = list_admin_bucket_contents()
-    return {"keys": keys}
+}
 
 
 
