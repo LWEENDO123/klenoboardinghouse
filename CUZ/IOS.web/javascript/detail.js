@@ -31,12 +31,13 @@ function showSlide(index) {
  */
 async function loadBoardingHouse(id, university, studentId) {
   try {
-    const response = await fetch(`/home/boardinghouse/${id}?university=${university}&student_id=${studentId}`);
+    const baseUrl = "https://klenoboardinghouse-production.up.railway.app";
+    const response = await fetch(`${baseUrl}/home/boardinghouse/${id}?university=${university}&student_id=${studentId}`);
     if (!response.ok) throw new Error("Failed to fetch details");
     const data = await response.json();
 
     // Name + location
-    document.querySelector(".house-name").textContent = data.name;
+    document.querySelector(".house-name").textContent = data.name_boardinghouse || data.name || "";
     document.querySelector(".location").textContent = "📍 " + (data.location || "");
 
     // Phone
@@ -63,7 +64,7 @@ async function loadBoardingHouse(id, university, studentId) {
     const gallerySlider = document.querySelector(".gallery-slider");
     gallerySlider.innerHTML = "";
     slides = [];
-    (data.gallery || []).forEach((item, i) => {
+    (data.gallery || []).forEach(item => {
       const slide = document.createElement("div");
       slide.className = "slide";
       if (item.type === "video") {
@@ -133,5 +134,14 @@ async function loadBoardingHouse(id, university, studentId) {
   }
 }
 
-// Example call (replace with real IDs)
-loadBoardingHouse("house123", "universityX", "studentY");
+// Parse query params from URL and load actual data
+const params = new URLSearchParams(window.location.search);
+const houseId = params.get("id");
+const university = params.get("university");
+const studentId = params.get("student_id");
+
+if (houseId && university && studentId) {
+  loadBoardingHouse(houseId, university, studentId);
+} else {
+  alert("Missing boarding house parameters in URL");
+}
