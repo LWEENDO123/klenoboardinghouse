@@ -2,6 +2,7 @@
 
 # Standard library
 # Standard library
+import mimetypes
 import os
 import json
 import logging
@@ -725,11 +726,11 @@ async def register_fcm(
 
 logger = logging.getLogger("media_proxy")
 
-import os
-from fastapi import Request, HTTPException
-from fastapi.responses import Response, StreamingResponse
 
-import mimetypes
+
+
+
+
 
 @app.get("/media/{file_path:path}")
 async def get_media_proxy(file_path: str, request: Request):
@@ -739,32 +740,48 @@ async def get_media_proxy(file_path: str, request: Request):
     Normalizes Firestore-stored URLs into valid S3 keys.
     """
     try:
-        # ✅ Log the incoming request path
         logger.debug(f"[MEDIA PROXY] Raw requested file_path={file_path}")
 
-        # ✅ Normalize Firestore full URLs into S3 keys
+        # Normalize Firestore full URLs into S3 keys
         if file_path.startswith("http://") or file_path.startswith("https://"):
             parsed = file_path.split("/media/", 1)
             if len(parsed) == 2:
                 file_path = parsed[1]
             logger.debug(f"[MEDIA PROXY] Normalized file_path={file_path}")
 
-        # ✅ List objects under the same prefix to debug what exists
+        # List objects under the same prefix to debug
         prefix = os.path.dirname(file_path)
         resp = s3_client.list_objects_v2(Bucket=RAILWAY_BUCKET, Prefix=prefix)
         keys = [obj["Key"] for obj in resp.get("Contents", [])]
         logger.debug(f"[MEDIA PROXY] Keys under prefix {prefix}: {keys}")
 
-        # 1. Fetch object metadata
+        # Fetch object metadata
         head = s3_client.head_object(Bucket=RAILWAY_BUCKET, Key=file_path)
         file_size = head["ContentLength"]
 
-        # ✅ Guess MIME type from file extension
+        # Guess MIME type from file extension
         guessed_type, _ = mimetypes.guess_type(file_path)
         content_type = guessed_type or head.get("ContentType", "application/octet-stream")
         logger.debug(f"[MEDIA PROXY] Serving {file_path} with Content-Type={content_type}")
 
-        # 2. Check for Range header
+        # Decide headers: inline for images/videos, download for others
+        if content_type.startswith("image/") or content_type.startswith("video/"):
+            base_headers = {
+                "Content-Length": str(file_size),
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=31536000",
+                "X-Content-Type-Options": "nosniff",
+            }
+        else:
+            base_headers = {
+                "Content-Length": str(file_size),
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=31536000",
+                "X-Content-Type-Options": "nosniff",
+                "Content-Disposition": f'attachment; filename="{os.path.basename(file_path)}"',
+            }
+
+        # Handle Range requests
         range_header = request.headers.get("range")
         if range_header:
             try:
@@ -791,9 +808,8 @@ async def get_media_proxy(file_path: str, request: Request):
                     content=obj["Body"].read(),
                     status_code=206,
                     headers={
+                        **base_headers,
                         "Content-Range": f"bytes {start}-{end}/{file_size}",
-                        "Accept-Ranges": "bytes",
-                        "Content-Length": str(length),
                         "Content-Type": content_type,
                     },
                 )
@@ -801,17 +817,12 @@ async def get_media_proxy(file_path: str, request: Request):
                 logger.error(f"[MEDIA PROXY] Range request parsing failed: {e}")
                 raise HTTPException(status_code=400, detail="Invalid Range header")
 
-        # 3. No Range header → stream whole file
+        # No Range header → stream whole file
         obj = s3_client.get_object(Bucket=RAILWAY_BUCKET, Key=file_path)
         return StreamingResponse(
             obj["Body"],
             media_type=content_type,
-            headers={
-                "Content-Length": str(file_size),
-                "Accept-Ranges": "bytes",
-                "Cache-Control": "public, max-age=31536000",
-                "X-Content-Type-Options": "nosniff",
-            },
+            headers=base_headers,
         )
 
     except s3_client.exceptions.NoSuchKey:
@@ -820,6 +831,7 @@ async def get_media_proxy(file_path: str, request: Request):
     except Exception as e:
         logger.error(f"[MEDIA PROXY] Proxy streaming error for {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching file")
+
 
 
 
