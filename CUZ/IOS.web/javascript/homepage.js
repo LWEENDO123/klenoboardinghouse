@@ -97,8 +97,8 @@ function renderHouse(house) {
 
   card.addEventListener("click", () => {
     console.log("[DEBUG] Card clicked:", house.id);
-    // ✅ Always send a valid university: use dropdown if selected, else fallback to house.university or current_user
-    const uniParam = selectedUniversity || house.university || "default";
+    // ✅ Always send a valid university: use dropdown if selected, else fallback to house.university
+    const uniParam = selectedUniversity || house.university || "";
     window.location.href = `/detail?id=${house.id}&university=${uniParam}&student_id=${studentId}`;
   });
 
