@@ -5,7 +5,7 @@ from typing import Optional, List
 from datetime import datetime
 
 from fastapi import APIRouter, Query, Depends, HTTPException
-from fastapi.rimport logging
+from fastapi.import logging
 from CUZ.yearbook.profile.storage import s3_client, RAILWAY_BUCKET 
 
 
