@@ -9,6 +9,13 @@ let selectedUniversity = "";
 const studentId = localStorage.getItem("user_id");
 const baseUrl = "https://klenoboardinghouse-production.up.railway.app";
 
+// ✅ Helper: normalize image URLs
+function normalizeImageUrl(url) {
+  if (!url) return null;
+  if (url.startsWith("http")) return url;
+  return `https://${url}`;
+}
+
 async function fetchHouses(refresh = false) {
   if (isLoading || !hasMore) return;
   isLoading = true;
@@ -69,11 +76,9 @@ function renderHouse(house) {
     else if (g === "mixed") genderIcon = "both.png";
   }
 
-  // ✅ Handle both cover_image and image fields
+  // ✅ Normalize cover_image or image
   const rawCover = house.cover_image || house.image;
-  const coverImage = rawCover && rawCover.startsWith("http")
-    ? rawCover
-    : "https://via.placeholder.com/400x200";
+  const coverImage = normalizeImageUrl(rawCover) || "https://via.placeholder.com/400x200";
 
   console.log("[DEBUG] coverImage:", coverImage);
 
