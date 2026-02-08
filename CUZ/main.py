@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, Response, FileResponse
+from CUZ.HOME.user_routes import list_admin_bucket_contents
 
 
 # Third‑party
@@ -791,6 +792,20 @@ async def get_media_proxy(file_path: str, request: Request):
     except Exception as e:
         logger.error(f"[MEDIA PROXY] Proxy streaming error for {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching file")
+
+# In CUZ/main.py
+
+
+
+# Add a debug endpoint
+@debug_router.get("/bucket")
+async def debug_bucket():
+    """
+    Debug endpoint to list objects under ALL/adminL-id/ in the bucket.
+    """
+    keys = list_admin_bucket_contents()
+    return {"keys": keys}
+
 
 
 
