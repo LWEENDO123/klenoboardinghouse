@@ -314,13 +314,19 @@ async def debug_headers(request: Request):
         "host": request.headers.get("host"),
     }
 
-@debug_router.get("/bucket")
-async def debug_bucket():
-    """
-    Debug endpoint to list objects under ALL/adminL-id/ in the bucket.
-    """
-    keys = list_admin_bucket_contents()
-    return {"keys": keys}
+@debug_router.get("/bucket/meta")
+async def debug_bucket_meta(key: str):
+    try:
+        head = s3_client.head_object(Bucket=RAILWAY_BUCKET, Key=key)
+        return {
+            "key": key,
+            "size": head["ContentLength"],
+            "content_type": head.get("ContentType"),
+            "last_modified": head.get("LastModified").isoformat() if head.get("LastModified") else None,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 
 
 
