@@ -707,6 +707,17 @@ async def get_media_proxy(file_path: str, request: Request):
         # ✅ Log the incoming request path
         logger.debug(f"[MEDIA PROXY] Requested file_path={file_path}")
 
+        # ✅ If Firestore stored full URLs, strip domain + /media/ prefix
+        if file_path.startswith("klenoboardinghouse-production.up.railway.app/media/"):
+            file_path = file_path.replace("klenoboardinghouse-production.up.railway.app/media/", "")
+            logger.debug(f"[MEDIA PROXY] Normalized file_path={file_path}")
+
+        # ✅ List objects under the same prefix to debug what exists
+        prefix = os.path.dirname(file_path)
+        resp = s3_client.list_objects_v2(Bucket=RAILWAY_BUCKET, Prefix=prefix)
+        keys = [obj["Key"] for obj in resp.get("Contents", [])]
+        logger.debug(f"[MEDIA PROXY] Keys under prefix {prefix}: {keys}")
+
         # 1. Fetch object metadata
         head = s3_client.head_object(Bucket=RAILWAY_BUCKET, Key=file_path)
         file_size = head["ContentLength"]
@@ -771,5 +782,6 @@ async def get_media_proxy(file_path: str, request: Request):
     except Exception as e:
         logger.error(f"[MEDIA PROXY] Proxy streaming error for {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching file")
+
 
 
