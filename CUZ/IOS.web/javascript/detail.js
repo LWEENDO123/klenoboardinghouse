@@ -5,6 +5,18 @@ let slides = [];
 const baseUrl = "https://klenoboardinghouse-production.up.railway.app";
 const currentUserUniversity = localStorage.getItem("user_university") || ""; // fallback
 
+// ✅ Normalize media URLs returned from backend
+function normalizeMediaUrl(url) {
+  if (!url) return null;
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    if (url.includes("/media/")) {
+      url = url.split("/media/", 1)[1];
+      return `/media/${url}`;
+    }
+  }
+  return url.startsWith("/media/") ? url : `/media/${url}`;
+}
+
 function renderDots() {
   const dotsContainer = document.querySelector(".dots");
   if (!dotsContainer) return;
@@ -34,7 +46,6 @@ async function loadBoardingHouse(id, university, studentId) {
       return;
     }
 
-    // ✅ Always send a valid university
     let uniToSend = university && university !== "default"
       ? university
       : (currentUserUniversity || "");
@@ -84,6 +95,7 @@ async function loadBoardingHouse(id, university, studentId) {
     const busAnchor = document.querySelector(".action-icon.bus");
     if (busAnchor) busAnchor.href = "#";
 
+    // ✅ Gallery normalization
     const gallerySlider = document.querySelector(".gallery-slider");
     if (gallerySlider) {
       gallerySlider.innerHTML = "";
@@ -91,9 +103,10 @@ async function loadBoardingHouse(id, university, studentId) {
       (data.gallery || []).forEach(item => {
         const slide = document.createElement("div");
         slide.className = "slide";
+        const mediaUrl = normalizeMediaUrl(item.url);
         slide.innerHTML = item.type === "video"
-          ? `<video controls src="${item.url}"></video>`
-          : `<img src="${item.url}" alt="${item.caption || 'Gallery'}">`;
+          ? `<video controls src="${mediaUrl}"></video>`
+          : `<img src="${mediaUrl}" alt="${item.caption || 'Gallery'}">`;
         gallerySlider.appendChild(slide);
         slides.push(slide);
       });
@@ -121,6 +134,7 @@ async function loadBoardingHouse(id, university, studentId) {
       });
     }
 
+    // ✅ Rooms normalization
     const grid = document.querySelector(".rooms .grid");
     if (grid) {
       grid.innerHTML = "";
@@ -139,8 +153,9 @@ async function loadBoardingHouse(id, university, studentId) {
         const badgeClass = (r.status?.toUpperCase() === 'AVAILABLE') ? 'available'
                          : (r.status?.toUpperCase() === 'UNAVAILABLE') ? 'unavailable'
                          : 'not-supported';
+        const imgUrl = normalizeMediaUrl(r.image) || '/static/assets/icons/placeholder.jpg'; // ✅ corrected placeholder path
         card.innerHTML = `
-          <img src="${r.image || '/static/assets/images/placeholder.jpg'}" alt="${r.type}">
+          <img src="${imgUrl}" alt="${r.type}">
           <div class="room-info">
             <div class="room-header">
               <p class="room-type">${r.type}</p>
