@@ -3,7 +3,7 @@ import { authorizedGet } from "./tokenManager.js";
 let currentSlide = 0;
 let slides = [];
 const baseUrl = "https://klenoboardinghouse-production.up.railway.app";
-const currentUserUniversity = localStorage.getItem("user_university") || ""; // fallback
+const currentUserUniversity = localStorage.getItem("user_university") || "";
 
 // ✅ Normalize media URLs returned from backend
 function normalizeMediaUrl(url) {
@@ -17,6 +17,7 @@ function normalizeMediaUrl(url) {
   return url.startsWith("/media/") ? url : `/media/${url}`;
 }
 
+// ---------- Gallery ----------
 function renderDots() {
   const dotsContainer = document.querySelector(".dots");
   if (!dotsContainer) return;
@@ -32,6 +33,8 @@ function renderDots() {
 function showSlide(index) {
   const slider = document.querySelector(".gallery-slider");
   if (!slider) return;
+  if (index < 0) index = slides.length - 1;
+  if (index >= slides.length) index = 0;
   slider.style.transform = `translateX(-${index * 100}%)`;
   const indicator = document.querySelector(".page-indicator");
   if (indicator) indicator.textContent = `${index + 1}/${slides.length}`;
@@ -39,6 +42,28 @@ function showSlide(index) {
   renderDots();
 }
 
+function createSlide(item) {
+  const slide = document.createElement("div");
+  slide.className = "slide shimmer"; // start shimmer
+  const mediaUrl = normalizeMediaUrl(item.url);
+
+  if (item.type === "video") {
+    const video = document.createElement("video");
+    video.controls = true;
+    video.src = mediaUrl;
+    video.onloadeddata = () => slide.classList.remove("shimmer");
+    slide.appendChild(video);
+  } else {
+    const img = document.createElement("img");
+    img.src = mediaUrl;
+    img.alt = item.caption || "Gallery";
+    img.onload = () => slide.classList.remove("shimmer");
+    slide.appendChild(img);
+  }
+  return slide;
+}
+
+// ---------- Load Boarding House ----------
 async function loadBoardingHouse(id, university, studentId) {
   try {
     if (!id || !studentId) {
@@ -57,13 +82,8 @@ async function loadBoardingHouse(id, university, studentId) {
 
     const url = `${baseUrl}/home/boardinghouse/${encodeURIComponent(id)}?student_id=${encodeURIComponent(studentId)}&university=${encodeURIComponent(uniToSend)}`;
 
-    console.log("[DEBUG] Fetching detail from:", url);
     const res = await authorizedGet(url);
-    console.log("[DEBUG] Detail response status:", res.status);
-
     if (!res.ok) {
-      const errBody = await res.text().catch(() => "");
-      console.error("[DEBUG] Detail fetch failed:", res.status, errBody);
       if (res.status === 404) {
         document.querySelector(".house-name").textContent = "Not found";
         document.querySelector(".space-description").textContent = "";
@@ -73,7 +93,6 @@ async function loadBoardingHouse(id, university, studentId) {
     }
 
     const data = await res.json();
-    console.log("[DEBUG] Detail JSON:", data);
 
     // Populate UI
     document.querySelector(".house-name").textContent = data.name_boardinghouse || data.name || "";
@@ -95,30 +114,30 @@ async function loadBoardingHouse(id, university, studentId) {
     const busAnchor = document.querySelector(".action-icon.bus");
     if (busAnchor) busAnchor.href = "#";
 
-    // ✅ Gallery normalization
+    // ✅ Gallery
     const gallerySlider = document.querySelector(".gallery-slider");
     if (gallerySlider) {
       gallerySlider.innerHTML = "";
       slides = [];
       (data.gallery || []).forEach(item => {
-        const slide = document.createElement("div");
-        slide.className = "slide";
-        const mediaUrl = normalizeMediaUrl(item.url);
-        slide.innerHTML = item.type === "video"
-          ? `<video controls src="${mediaUrl}"></video>`
-          : `<img src="${mediaUrl}" alt="${item.caption || 'Gallery'}">`;
+        const slide = createSlide(item);
         gallerySlider.appendChild(slide);
         slides.push(slide);
       });
       if (slides.length > 0) showSlide(0);
       renderDots();
+
+      // Navigation arrows
+      const prevBtn = document.querySelector(".gallery-nav .prev");
+      const nextBtn = document.querySelector(".gallery-nav .next");
+      if (prevBtn) prevBtn.addEventListener("click", () => showSlide(currentSlide - 1));
+      if (nextBtn) nextBtn.addEventListener("click", () => showSlide(currentSlide + 1));
     }
 
     if (window._detailAutoCycleInterval) clearInterval(window._detailAutoCycleInterval);
     window._detailAutoCycleInterval = setInterval(() => {
       if (slides.length === 0) return;
-      const next = (currentSlide + 1) % slides.length;
-      showSlide(next);
+      showSlide(currentSlide + 1);
     }, 5000);
 
     document.querySelector(".space-description").textContent = data.space_description || "";
@@ -134,7 +153,7 @@ async function loadBoardingHouse(id, university, studentId) {
       });
     }
 
-    // ✅ Rooms normalization
+    // ✅ Rooms
     const grid = document.querySelector(".rooms .grid");
     if (grid) {
       grid.innerHTML = "";
@@ -149,13 +168,18 @@ async function loadBoardingHouse(id, university, studentId) {
       ];
       roomDefs.forEach(r => {
         const card = document.createElement("div");
-        card.className = "room-card";
+        card.className = "room-card shimmer"; // shimmer until image loads
         const badgeClass = (r.status?.toUpperCase() === 'AVAILABLE') ? 'available'
                          : (r.status?.toUpperCase() === 'UNAVAILABLE') ? 'unavailable'
                          : 'not-supported';
-        const imgUrl = normalizeMediaUrl(r.image) || '/static/assets/icons/placeholder.jpg'; // ✅ corrected placeholder path
-        card.innerHTML = `
-          <img src="${imgUrl}" alt="${r.type}">
+        const imgUrl = normalizeMediaUrl(r.image) || '/static/assets/icons/placeholder.jpg';
+        const img = document.createElement("img");
+        img.src = imgUrl;
+        img.alt = r.type;
+        img.onload = () => card.classList.remove("shimmer");
+
+        card.appendChild(img);
+        card.innerHTML += `
           <div class="room-info">
             <div class="room-header">
               <p class="room-type">${r.type}</p>
@@ -173,7 +197,7 @@ async function loadBoardingHouse(id, university, studentId) {
   }
 }
 
-// Parse query params
+// ---------- Parse query params ----------
 const params = new URLSearchParams(window.location.search);
 const houseId = params.get("id");
 const university = params.get("university");
