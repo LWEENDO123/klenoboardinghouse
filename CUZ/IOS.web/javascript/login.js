@@ -1,10 +1,5 @@
-// Define baseUrl and apiKey here so they are available
 const baseUrl = "https://klenoboardinghouse-production.up.railway.app";
 const apiKey = "d17809df9e6c4e33801af1c5ee9d11da";
-
-// Import authorizedPost from tokenManager.js if using modules
-// If not using ES modules, make sure tokenManager.js is loaded before this script
-// import { authorizedPost } from "./tokenManager.js";
 
 document.getElementById("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -36,19 +31,22 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
       localStorage.setItem("refresh_token", data.refresh_token);
       localStorage.setItem("role", data.role);
       localStorage.setItem("user_id", data.user_id);
-      localStorage.setItem("university", data.university);
 
-      // ✅ Safeguard: only generate fallback if backend didn’t send a device_token
+      // ✅ Save university under BOTH keys for consistency
+      localStorage.setItem("university", data.university);
+      localStorage.setItem("user_university", data.university);
+
+      // Safeguard: generate fallback device token if backend didn’t send one
       let deviceToken = data.device_token;
       if (!deviceToken) {
         deviceToken = "web-" + Date.now();
       }
       localStorage.setItem("device_token", deviceToken);
 
-      // Debug log so you can confirm what’s being used
       console.log("Device token being used:", deviceToken);
+      console.log("University stored:", data.university);
 
-      // 🔹 Register device immediately after login
+      // Register device immediately after login
       try {
         await authorizedPost(`${baseUrl}/device/register`, {
           university: data.university,
