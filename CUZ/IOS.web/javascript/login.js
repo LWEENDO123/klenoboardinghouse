@@ -61,7 +61,8 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
       }
 
       // Redirect to homepage
-      window.location.href = "homepage.html";
+      window.location.href = "/homepage";
+
     } else {
       document.getElementById("message").textContent = data.detail || "Login failed.";
     }
