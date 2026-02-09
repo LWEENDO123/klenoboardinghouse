@@ -4,7 +4,12 @@
   <meta charset="UTF-8">
   <title>Kleno Login</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <link rel="stylesheet" href="css/style.css">
+
+  <!-- ✅ Load CSS from /static -->
+  <link rel="stylesheet" href="/static/css/style.css">
+
+  <!-- ✅ Load login.js as ES module -->
+  <script type="module" src="/static/javascript/login.js"></script>
 </head>
 <body>
   <div class="container">
@@ -14,7 +19,7 @@
     <form id="loginForm">
       <input type="email" id="email" placeholder="Email" required>
       <input type="password" id="password" placeholder="Password" required>
-      <select id="university">
+      <select id="university" required>
         <option value="">Choose University</option>
         <option value="CUZM">Cavendish Main Campus</option>
         <option value="CUZMED">Cavendish Medical Campus</option>
@@ -28,7 +33,5 @@
     <p id="message"></p>
     <p>Don’t have an account? <a href="signup.html">Sign Up</a></p>
   </div>
-
-  <script src="../javascript/login.js"></script>
 </body>
 </html>
