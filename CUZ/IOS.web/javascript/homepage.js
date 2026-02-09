@@ -98,10 +98,12 @@ function renderHouse(house) {
     console.log("[DEBUG] Card clicked:", house.id);
     // Always send a valid university: dropdown -> house.university -> currentUserUniversity
     const uniParam = selectedUniversity || house.university || currentUserUniversity || "";
-    // If uniParam is still empty, omit the university query param (backend will fallback to current_user)
-    const uniQuery = uniParam ? `&university=${encodeURIComponent(uniParam)}` : "";
-    window.location.href = `/detail.html?id=${house.id}&university=${uniParam}&student_id=${studentId}`;
-
+    if (!uniParam) {
+      alert("University not available. Please select your university.");
+      return;
+    }
+    const uniQuery = `&university=${encodeURIComponent(uniParam)}`;
+    window.location.href = `/detail.html?id=${encodeURIComponent(house.id)}${uniQuery}&student_id=${encodeURIComponent(studentId)}`;
   });
 
   document.getElementById("houseList").appendChild(card);
