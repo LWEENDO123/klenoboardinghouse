@@ -763,8 +763,12 @@ async def get_media_proxy(file_path: str, request: Request):
                 file_path = parsed[1]
             logger.debug(f"[MEDIA PROXY] Normalized from full URL → {file_path}")
 
-        # At this point FastAPI already strips "/media/" from the route,
-        # so file_path should be "ALL/adminL-id/...". No need to strip again.
+        # ✅ Extra strip: if domain prefix is baked into path
+        if file_path.startswith("klenoboardinghouse-production.up.railway.app/media/"):
+            file_path = file_path.split("klenoboardinghouse-production.up.railway.app/media/", 1)[1]
+            logger.debug(f"[MEDIA PROXY] Stripped domain prefix → {file_path}")
+
+        # At this point file_path should be "ALL/adminL-id/..."
         logger.debug(f"[MEDIA PROXY] Final S3 key → {file_path}")
         logger.debug(f"[MEDIA PROXY] Using bucket={RAILWAY_BUCKET}")
 
@@ -829,6 +833,7 @@ async def get_media_proxy(file_path: str, request: Request):
     except Exception as e:
         logger.error(f"[MEDIA PROXY] Proxy streaming error for {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching file")
+
 
 
 
