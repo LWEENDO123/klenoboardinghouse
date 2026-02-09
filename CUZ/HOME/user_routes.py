@@ -443,8 +443,8 @@ async def get_boardinghouse_summary(
 
     # --- Build normalized structured gallery ---
     gallery_items: list[dict] = []
-
     raw_gallery = data.get("gallery")
+
     if isinstance(raw_gallery, list) and raw_gallery:
         for item in raw_gallery:
             if not item:
@@ -460,29 +460,34 @@ async def get_boardinghouse_summary(
                         media_type = "video" if lower.endswith((".mp4", ".m3u8", ".webm")) or "video" in lower else "image"
                     gallery_items.append({
                         "type": media_type,
-                        "url": str(url),
-                        "thumbnail_url": str(thumbnail) if thumbnail else None,
+                        "url": normalize_media_url(url),  # ✅ normalize here
+                        "thumbnail_url": normalize_media_url(thumbnail) if thumbnail else None,
                         "caption": str(caption) if caption else None,
                     })
             else:
                 url = str(item)
                 lower = url.lower()
                 media_type = "video" if lower.endswith((".mp4", ".m3u8", ".webm")) or "video" in lower else "image"
-                gallery_items.append({"type": media_type, "url": url, "thumbnail_url": None, "caption": None})
+                gallery_items.append({
+                    "type": media_type,
+                    "url": normalize_media_url(url),  # ✅ normalize here
+                    "thumbnail_url": None,
+                    "caption": None
+                })
 
     if not gallery_items:
         images = data.get("images") or []
         if isinstance(images, list):
             for img in images:
                 if img:
-                    gallery_items.append({"type": "image", "url": str(img), "thumbnail_url": None, "caption": None})
+                    gallery_items.append({"type": "image", "url": normalize_media_url(img), "thumbnail_url": None, "caption": None})
         videos = data.get("videos") or []
         if isinstance(videos, list):
             for v in videos:
                 if v:
-                    gallery_items.append({"type": "video", "url": str(v), "thumbnail_url": None, "caption": None})
+                    gallery_items.append({"type": "video", "url": normalize_media_url(v), "thumbnail_url": None, "caption": None})
 
-    cover_image = (
+    cover_image = normalize_media_url(
         data.get("cover_image")
         or data.get("coverImage")
         or data.get("image")
@@ -492,29 +497,29 @@ async def get_boardinghouse_summary(
     payload = {
         "id": id,
         "name": data.get("name", "Unnamed"),
-        # legacy room fields
-        "image_12": data.get("image_12"),
+        # legacy room fields (normalized)
+        "image_12": normalize_media_url(data.get("image_12")),
         "price_12": data.get("price_12"),
         "sharedroom_12": data.get("sharedroom_12"),
-        "image_6": data.get("image_6"),
+        "image_6": normalize_media_url(data.get("image_6")),
         "price_6": data.get("price_6"),
         "sharedroom_6": data.get("sharedroom_6"),
-        "image_5": data.get("image_5"),
+        "image_5": normalize_media_url(data.get("image_5")),
         "price_5": data.get("price_5"),
         "sharedroom_5": data.get("sharedroom_5"),
-        "image_4": data.get("image_4"),
+        "image_4": normalize_media_url(data.get("image_4")),
         "price_4": data.get("price_4"),
         "sharedroom_4": data.get("sharedroom_4"),
-        "image_3": data.get("image_3"),
+        "image_3": normalize_media_url(data.get("image_3")),
         "price_3": data.get("price_3"),
         "sharedroom_3": data.get("sharedroom_3"),
-        "image_2": data.get("image_2"),
+        "image_2": normalize_media_url(data.get("image_2")),
         "price_2": data.get("price_2"),
         "sharedroom_2": data.get("sharedroom_2"),
-        "image_1": data.get("image_1"),
+        "image_1": normalize_media_url(data.get("image_1")),
         "price_1": data.get("price_1"),
         "singleroom": data.get("singleroom"),
-        "image_apartment": data.get("image_apartment"),
+        "image_apartment": normalize_media_url(data.get("image_apartment")),
         "price_apartment": data.get("price_apartment"),
         "apartment": data.get("apartment"),
 
@@ -538,7 +543,6 @@ async def get_boardinghouse_summary(
     except Exception as e:
         logger.exception("BoardingHouseSummary validation failed for id=%s", id)
         raise HTTPException(status_code=500, detail=f"Boarding house payload validation error: {str(e)}")
-
 
 # (Other endpoints such as directions, landlord previews, redirects remain unchanged.
 #  Add them below ensuring all referenced helpers and imports exist.)
