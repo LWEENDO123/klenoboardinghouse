@@ -188,40 +188,24 @@ async def assign_boardinghouse(
         universities = getattr(boardinghouse, "universities", [current_user.get("university")])
         bh_id = generate_boardinghouse_id(landlord_name)
 
-        # Build gallery: images first (type=image), then videos (type=video + thumbnail_url)
+        # ✅ Trust frontend gallery directly
         gallery: List[Dict] = []
-
-        # Add images (if any)
-        for img in (boardinghouse.images or []):
-            gallery.append({"type": "image", "url": img, "thumbnail_url": None})
-
-        # For videos: attempt to generate/upload thumbnail (async)
-        video_urls = boardinghouse.videos or []
-        # Kick off thumbnail generation tasks in parallel
-        thumb_tasks = [asyncio.create_task(_generate_and_upload_thumbnail(v)) for v in video_urls]
-        # Wait for all to finish
-        thumb_results = await asyncio.gather(*thumb_tasks, return_exceptions=True)
-
-        for idx, v in enumerate(video_urls):
-            thumb_url = None
-            res = thumb_results[idx]
-            if isinstance(res, Exception):
-                print(f"thumbnail task exception for {v}: {res}")
-                thumb_url = None
-            else:
-                thumb_url = res  # may be None if generation/upload failed
-
-            gallery.append({"type": "video", "url": v, "thumbnail_url": thumb_url})
+        if boardinghouse.gallery:
+            # Convert Pydantic MediaItem objects to dicts
+            gallery = [item.dict() for item in boardinghouse.gallery]
+        else:
+            # Fallback: build gallery from images/videos if no structured gallery provided
+            for img in (boardinghouse.images or []):
+                gallery.append({"type": "image", "url": img, "thumbnail_url": None})
+            for v in (boardinghouse.videos or []):
+                gallery.append({"type": "video", "url": v, "thumbnail_url": None})
 
         # Prepare data for storage
         boardinghouse_data = boardinghouse.dict(exclude_unset=True)
         boardinghouse_data.update({
             "id": bh_id,
             "created_at": SERVER_TIMESTAMP,
-            "videos": video_urls,
-            "voice_notes": boardinghouse.voice_notes or [],
-            "images": boardinghouse.images or [],
-            "gallery": gallery,  # new structured gallery field
+            "gallery": gallery,  # ✅ preserve frontend thumbnails
             "space_description": boardinghouse.space_description or "Kleno will update you when number of space is available.",
             "conditions": boardinghouse.conditions or None,
             "public_T": boardinghouse.public_T or None,
@@ -260,7 +244,6 @@ async def assign_boardinghouse(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error assigning boarding house: {str(e)}")
-
 
 
 # ---------------------------
