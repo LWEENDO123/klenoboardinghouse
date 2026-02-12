@@ -460,8 +460,8 @@ async def get_boardinghouse_summary(
                         media_type = "video" if lower.endswith((".mp4", ".m3u8", ".webm")) or "video" in lower else "image"
                     gallery_items.append({
                         "type": media_type,
-                        "url": normalize_media_url(url),   # ✅ normalize video/image URLs
-                        "thumbnail_url": thumbnail,        # ✅ preserve full thumbnail URL
+                        "url": normalize_media_url(url),
+                        "thumbnail_url": thumbnail,   # ✅ preserve full thumbnail URL
                         "caption": str(caption) if caption else None,
                     })
             else:
@@ -537,6 +537,9 @@ async def get_boardinghouse_summary(
         "yango_coordinates": data.get("yango_coordinates"),
         "phone_number": data.get("phone_number") or data.get("phoneNumber") or None,
     }
+
+    # ✅ Debug print before returning
+    logger.info("BoardingHouseSummary payload for id=%s: %s", id, payload)
 
     try:
         return BoardingHouseSummary(**payload)
