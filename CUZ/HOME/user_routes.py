@@ -460,8 +460,8 @@ async def get_boardinghouse_summary(
                         media_type = "video" if lower.endswith((".mp4", ".m3u8", ".webm")) or "video" in lower else "image"
                     gallery_items.append({
                         "type": media_type,
-                        "url": normalize_media_url(url),  # ✅ normalize here
-                        "thumbnail_url": normalize_media_url(thumbnail) if thumbnail else None,
+                        "url": normalize_media_url(url),   # ✅ normalize video/image URLs
+                        "thumbnail_url": thumbnail,        # ✅ preserve full thumbnail URL
                         "caption": str(caption) if caption else None,
                     })
             else:
@@ -470,7 +470,7 @@ async def get_boardinghouse_summary(
                 media_type = "video" if lower.endswith((".mp4", ".m3u8", ".webm")) or "video" in lower else "image"
                 gallery_items.append({
                     "type": media_type,
-                    "url": normalize_media_url(url),  # ✅ normalize here
+                    "url": normalize_media_url(url),
                     "thumbnail_url": None,
                     "caption": None
                 })
