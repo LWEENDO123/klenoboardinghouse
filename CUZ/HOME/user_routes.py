@@ -872,39 +872,49 @@ async def get_boardinghouse_summary(
 
 
 
-@router.get("/boardinghouse/{id}/landlord-phone")
+@router.get("/boardinghouse/{id}/landlord-phone", response_model=dict)
 async def get_landlord_phone(
     id: str,
     university: str,
     student_id: str,
-    current_user: dict = Depends(get_premium_student),  # ✅ premium-only
+    current_user: dict = Depends(get_current_user),  # ✅ allow free + premium
 ):
-    """
-    Fetch boarding house phone number directly.
-    Premium students only.
-    """
-    try:
-        # Fetch boarding house (global first, fallback to university HOME)
-        ref = db.collection("BOARDINGHOUSES").document(id).get()
-        if not ref.exists:
-            ref = db.collection("HOME").document(university).collection("BOARDHOUSE").document(id).get()
-        if not ref.exists:
-            raise HTTPException(status_code=404, detail="Boarding house not found")
+    # Validate student identity (both free and premium allowed)
+    validate_student_identity(university, student_id)
 
-        data = ref.to_dict()
-        phone_number = data.get("phone_number")
-        if not phone_number:
-            raise HTTPException(status_code=404, detail="Phone number not available for this boarding house")
+    # Fetch boarding house document
+    ref = db.collection("BOARDINGHOUSES").document(id).get()
+    if not ref.exists:
+        ref = db.collection("HOME").document(university).collection("BOARDHOUSE").document(id).get()
+    if not ref.exists:
+        raise HTTPException(status_code=404, detail="Boarding house not found")
 
-        return {
-            "house_id": id,
-            "phone_number": phone_number,
-        }
+    data = ref.to_dict() or {}
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching boarding house phone number: {str(e)}")
+    # Collect all room statuses
+    room_statuses = [
+        data.get("sharedroom_12"),
+        data.get("sharedroom_6"),
+        data.get("sharedroom_5"),
+        data.get("sharedroom_4"),
+        data.get("sharedroom_3"),
+        data.get("sharedroom_2"),
+        data.get("singleroom"),
+        data.get("apartment"),
+    ]
+
+    # Normalize statuses (lowercase, strip spaces)
+    normalized = [str(s).strip().lower() for s in room_statuses if s]
+
+    # Decision logic
+    if any("available" in s for s in normalized):
+        return {"phone_number": data.get("phone_number")}
+    elif all("unavailable" in s for s in normalized if s):
+        return {"message": "This boarding house is currently full."}
+    elif all("not supported" in s for s in normalized if s):
+        return {"message": "This boarding house is currently under processing on the shared room types."}
+    else:
+        return {"message": "No availability information found."}
 
 
 
