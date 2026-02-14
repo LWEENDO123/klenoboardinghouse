@@ -547,6 +547,55 @@ async def get_boardinghouse_summary(
         logger.exception("BoardingHouseSummary validation failed for id=%s", id)
         raise HTTPException(status_code=500, detail=f"Boarding house payload validation error: {str(e)}")
 
+
+
+# ---------------------------
+# GET /home/boardinghouse/{id}/landlord-phone
+# ---------------------------
+@router.get("/boardinghouse/{id}/landlord-phone", response_model=dict)
+async def get_landlord_phone(
+    id: str,
+    university: str,
+    student_id: str,
+    current_user: dict = Depends(get_current_user),  # ✅ allow free + premium
+):
+    # Validate student identity
+    validate_student_identity(university, student_id)
+
+    # Fetch boarding house document
+    ref = db.collection("BOARDINGHOUSES").document(id).get()
+    if not ref.exists:
+        ref = db.collection("HOME").document(university).collection("BOARDHOUSE").document(id).get()
+    if not ref.exists:
+        raise HTTPException(status_code=404, detail="Boarding house not found")
+
+    data = ref.to_dict() or {}
+
+    # Collect room statuses
+    room_statuses = [
+        data.get("sharedroom_12"),
+        data.get("sharedroom_6"),
+        data.get("sharedroom_5"),
+        data.get("sharedroom_4"),
+        data.get("sharedroom_3"),
+        data.get("sharedroom_2"),
+        data.get("singleroom"),
+        data.get("apartment"),
+    ]
+
+    normalized = [str(s).strip().lower() for s in room_statuses if s]
+
+    # Decision logic
+    if any("available" in s for s in normalized):
+        return {"phone_number": data.get("phone_number")}
+    elif normalized and all("unavailable" in s for s in normalized):
+        return {"message": "This boarding house is currently full."}
+    elif normalized and all("not supported" in s for s in normalized):
+        return {"message": "This boarding house is currently under processing on the shared room types."}
+    else:
+        return {"message": "No availability information found."}
+
+
 # (Other endpoints such as directions, landlord previews, redirects remain unchanged.
 #  Add them below ensuring all referenced helpers and imports exist.)
 
