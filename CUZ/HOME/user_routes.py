@@ -592,8 +592,12 @@ async def get_landlord_phone(
         return {"message": "This boarding house is currently full."}
     elif normalized and all("not supported" in s for s in normalized):
         return {"message": "This boarding house is currently under processing on the shared room types."}
+    elif normalized and all(s in ("unavailable", "not supported") for s in normalized):
+        # Mixed case: no available rooms, but some unavailable and some not supported
+        return {"message": "This boarding house is currently full and will be available when reopened."}
     else:
         return {"message": "No availability information found."}
+
 
 
 # (Other endpoints such as directions, landlord previews, redirects remain unchanged.
