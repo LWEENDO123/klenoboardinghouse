@@ -585,18 +585,23 @@ async def get_landlord_phone(
 
     normalized = [str(s).strip().lower() for s in room_statuses if s]
 
-    # Decision logic
+    # Decision logic with debug logs
     if any("available" in s for s in normalized):
+        logger.info("Landlord-phone logic: at least one room available → returning phone number")
         return {"phone_number": data.get("phone_number")}
     elif normalized and all("unavailable" in s for s in normalized):
+        logger.info("Landlord-phone logic: all rooms unavailable → returning 'full'")
         return {"message": "This boarding house is currently full."}
     elif normalized and all("not supported" in s for s in normalized):
+        logger.info("Landlord-phone logic: all rooms not supported → returning 'under processing'")
         return {"message": "This boarding house is currently under processing on the shared room types."}
     elif normalized and all(s in ("unavailable", "not supported") for s in normalized):
-        # Mixed case: no available rooms, but some unavailable and some not supported
+        logger.info("Landlord-phone logic: mixed unavailable + not supported → returning 'full and will reopen'")
         return {"message": "This boarding house is currently full and will be available when reopened."}
     else:
+        logger.info("Landlord-phone logic: no availability information found")
         return {"message": "No availability information found."}
+
 
 
 
