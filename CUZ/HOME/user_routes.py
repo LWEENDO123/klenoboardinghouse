@@ -551,15 +551,13 @@ async def get_boardinghouse_summary(
 
 # ---------------------------
 # GET /home/boardinghouse/{id}/landlord-phone
-# ---------------------------
-@router.get("/boardinghouse/{id}/landlord-phone", response_model=dict)
+# ---------------------------@router.get("/boardinghouse/{id}/landlord-phone", response_model=dict)
 async def get_landlord_phone(
     id: str,
     university: str,
     student_id: str,
-    current_user: dict = Depends(get_current_user),  # ✅ allow free + premium
+    current_user: dict = Depends(get_current_user),
 ):
-    # Validate student identity
     validate_student_identity(university, student_id)
 
     # Fetch boarding house document
@@ -571,7 +569,6 @@ async def get_landlord_phone(
 
     data = ref.to_dict() or {}
 
-    # Collect room statuses
     room_statuses = [
         data.get("sharedroom_12"),
         data.get("sharedroom_6"),
@@ -585,18 +582,18 @@ async def get_landlord_phone(
 
     normalized = [str(s).strip().lower() for s in room_statuses if s]
 
-    # Decision logic with debug logs
-    if any("available" in s for s in normalized):
-        logger.info("Landlord-phone logic: at least one room available → returning phone number")
+    # Decision logic with precise matching
+    if any(s == "available" for s in normalized):
+        logger.info("Landlord-phone logic: explicit 'available' found → returning phone number")
         return {"phone_number": data.get("phone_number")}
-    elif normalized and all("unavailable" in s for s in normalized):
-        logger.info("Landlord-phone logic: all rooms unavailable → returning 'full'")
+    elif normalized and all(s == "unavailable" for s in normalized):
+        logger.info("Landlord-phone logic: all 'unavailable' → returning 'full'")
         return {"message": "This boarding house is currently full."}
-    elif normalized and all("not supported" in s for s in normalized):
-        logger.info("Landlord-phone logic: all rooms not supported → returning 'under processing'")
+    elif normalized and all(s == "not supported" for s in normalized):
+        logger.info("Landlord-phone logic: all 'not supported' → returning 'under processing'")
         return {"message": "This boarding house is currently under processing on the shared room types."}
     elif normalized and all(s in ("unavailable", "not supported") for s in normalized):
-        logger.info("Landlord-phone logic: mixed unavailable + not supported → returning 'full and will reopen'")
+        logger.info("Landlord-phone logic: mixed 'unavailable' + 'not supported' → returning 'full and will reopen'")
         return {"message": "This boarding house is currently full and will be available when reopened."}
     else:
         logger.info("Landlord-phone logic: no availability information found")
