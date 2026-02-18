@@ -551,7 +551,8 @@ async def get_boardinghouse_summary(
 
 # ---------------------------
 # GET /home/boardinghouse/{id}/landlord-phone
-# ---------------------------@router.get("/boardinghouse/{id}/landlord-phone", response_model=dict)
+#-------------------------------------------------------------------------------------------------
+@router.get("/boardinghouse/{id}/landlord-phone", response_model=dict)
 async def get_landlord_phone(
     id: str,
     university: str,
@@ -580,9 +581,17 @@ async def get_landlord_phone(
         data.get("apartment"),
     ]
 
-    normalized = [str(s).strip().lower() for s in room_statuses if s]
+    # Normalize: strip spaces, lowercase, exact tokens
+    normalized = []
+    for s in room_statuses:
+        if s:
+            val = str(s).strip().lower()
+            if val:
+                normalized.append(val)
 
-    # Decision logic with precise matching
+    logger.debug("Normalized room statuses: %s", normalized)
+
+    # Decision logic with exact matches
     if any(s == "available" for s in normalized):
         logger.info("Landlord-phone logic: explicit 'available' found → returning phone number")
         return {"phone_number": data.get("phone_number")}
@@ -598,6 +607,7 @@ async def get_landlord_phone(
     else:
         logger.info("Landlord-phone logic: no availability information found")
         return {"message": "No availability information found."}
+
 
 
 
