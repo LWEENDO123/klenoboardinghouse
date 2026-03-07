@@ -62,7 +62,7 @@ class BoardingHouseCreate(BaseModel):
     phone_number: Optional[str] = Field(default=None)
 
     class Config:
-        extra = "forbid"
+        extra = "ignore"
 
 
 # ---------------------------
