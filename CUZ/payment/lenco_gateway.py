@@ -667,12 +667,20 @@ async def route_payout(req: PayoutRequest):
 @router.post("/collect/mobile-money")
 async def route_mobile_money(req: MobileMoneyRequest):
     """
-    Initiate a mobile money collection.
-    Sends payload to Lenco, polls until final status,
-    and logs payment atomically in Firestore.
+    Mobile money collection endpoint.
+
+    Flow:
+    1. Initialize collection
+    2. Wait 30 seconds
+    3. Check status
+    4. If pending -> wait another 30 seconds
+    5. Final check
+    6. If still pending -> return NO RESPONSE
     """
+
     try:
         normalized_phone = _normalize_msisdn(req.phone)
+
         payload = {
             "operator": req.operator.lower(),
             "bearer": req.bearer.lower(),
@@ -682,64 +690,109 @@ async def route_mobile_money(req: MobileMoneyRequest):
             "reference": f"mobile-{uuid.uuid4().hex[:12]}"
         }
 
+        # --------------------------
+        # STEP 1: initialize payment
+        # --------------------------
         init = await initialize_mobile_money_collection(payload)
+
         lenco_id = init.get("id") or init.get("data", {}).get("id")
-        result = {"initialize": init, "lenco_id": lenco_id}
 
-        elapsed = 0.0
-        poll_timeout_seconds = req.poll_timeout_seconds or 30
-        poll_interval_seconds = req.poll_interval_seconds or 2.0
+        if not lenco_id:
+            raise HTTPException(status_code=500, detail="Lenco did not return transaction id")
 
-        final_status = {}
-        while elapsed < poll_timeout_seconds and lenco_id:
-            try:
-                status_resp = await get_collection_status(lenco_id)
-                st = status_resp.get("data") if isinstance(status_resp, dict) else status_resp
-                final_status = st or {}
-                state = final_status.get("status") or final_status.get("state") or final_status.get("payment_status")
-                if state and str(state).upper() in {"SUCCESSFUL", "COMPLETED", "SUCCESS", "PAID", "FAILED", "DECLINED", "ERROR"}:
-                    break
-            except Exception as e:
-                result["latest_status"] = {"error": str(e)}
-            await asyncio.sleep(poll_interval_seconds)
-            elapsed += poll_interval_seconds
+        logger.info(f"[MobileMoney] Initialized collection id={lenco_id}")
 
-        # ✅ Atomic Firestore logging
-        
+        final_status = None
+
+        # --------------------------
+        # STEP 2: FIRST WAIT (30s)
+        # --------------------------
+        await asyncio.sleep(30)
+
+        status_resp = await get_collection_status(lenco_id)
+        st = status_resp.get("data", {})
+
+        state = (st.get("status") or "").upper()
+
+        logger.info(f"[MobileMoney] First status check: {state}")
+
+        if state in {"SUCCESSFUL", "COMPLETED", "SUCCESS", "PAID"}:
+            final_status = "SUCCESS"
+
+        elif state in {"FAILED", "DECLINED", "ERROR"}:
+            final_status = "FAILED"
+
+        else:
+            # --------------------------
+            # STEP 3: SECOND WAIT (30s)
+            # --------------------------
+            await asyncio.sleep(30)
+
+            status_resp = await get_collection_status(lenco_id)
+            st = status_resp.get("data", {})
+
+            state = (st.get("status") or "").upper()
+
+            logger.info(f"[MobileMoney] Second status check: {state}")
+
+            if state in {"SUCCESSFUL", "COMPLETED", "SUCCESS", "PAID"}:
+                final_status = "SUCCESS"
+
+            elif state in {"FAILED", "DECLINED", "ERROR"}:
+                final_status = "FAILED"
+
+            else:
+                final_status = "NO_RESPONSE"
+
+        # --------------------------
+        # STEP 4: Firestore logging
+        # --------------------------
         log_collection_atomic(
             req.student_id,
-            req.university,   # ✅ use university, not country
+            req.university,
             lenco_id,
             req.amount,
-            final_status.get("status", "PENDING"),
+            final_status,
             payload["operator"],
             payload["reference"]
         )
 
-        return {
-            "status": final_status.get("status") in {"SUCCESSFUL", "COMPLETED", "SUCCESS", "PAID"},
-            "message": f"Mobile money collection {final_status.get('status', 'PENDING')}",
-            "data": {
-                "reference": payload["reference"],
-                "lenco_id": lenco_id,
-                "final_status": final_status
+        # --------------------------
+        # STEP 5: frontend response
+        # --------------------------
+        if final_status == "SUCCESS":
+            return {
+                "status": True,
+                "message": "Payment successful",
+                "data": {
+                    "reference": payload["reference"],
+                    "lenco_id": lenco_id
+                }
             }
-        }
+
+        elif final_status == "FAILED":
+            return {
+                "status": False,
+                "message": "Payment failed",
+                "data": {
+                    "reference": payload["reference"],
+                    "lenco_id": lenco_id
+                }
+            }
+
+        else:
+            return {
+                "status": False,
+                "message": "Payment failed: no user response",
+                "data": {
+                    "reference": payload["reference"],
+                    "lenco_id": lenco_id
+                }
+            }
 
     except Exception as e:
         logger.error(f"[MobileMoney] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Mobile money collection failed: {str(e)}")
-
-
-
-
-logger = logging.getLogger("users.phone")
-if not logger.handlers:
-    h = logging.StreamHandler()
-    h.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
-    logger.addHandler(h)
-logger.setLevel(logging.DEBUG)
-
 
 
 
