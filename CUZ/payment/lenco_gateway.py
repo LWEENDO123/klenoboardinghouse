@@ -533,6 +533,7 @@ class PayoutRequest(BaseModel):
     poll_interval_seconds: Optional[float] = 2.0
 
 class MobileMoneyRequest(BaseModel):
+    student_id: str
     university: str      # ✅ new field so logging uses correct Firestore path
     operator: str
     bearer: Optional[str] = "merchant"
