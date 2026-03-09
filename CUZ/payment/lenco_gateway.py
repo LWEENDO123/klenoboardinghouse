@@ -680,7 +680,10 @@ async def route_mobile_money(req: MobileMoneyRequest):
     """
 
     try:
+
         normalized_phone = _normalize_msisdn(req.phone)
+
+        reference = f"mobile-{uuid.uuid4().hex[:12]}"
 
         payload = {
             "operator": req.operator.lower(),
@@ -688,7 +691,7 @@ async def route_mobile_money(req: MobileMoneyRequest):
             "phone": normalized_phone,
             "amount": req.amount,
             "country": req.country.lower(),
-            "reference": f"mobile-{uuid.uuid4().hex[:12]}"
+            "reference": reference
         }
 
         # --------------------------
@@ -706,7 +709,7 @@ async def route_mobile_money(req: MobileMoneyRequest):
         final_status = None
 
         # --------------------------
-        # STEP 2: FIRST WAIT (30s)
+        # STEP 2: FIRST WAIT
         # --------------------------
         await asyncio.sleep(30)
 
@@ -717,6 +720,9 @@ async def route_mobile_money(req: MobileMoneyRequest):
 
         logger.info(f"[MobileMoney] First status check: {state}")
 
+        # --------------------------
+        # SUCCESS / FAILED HANDLING
+        # --------------------------
         if state in {"SUCCESSFUL", "COMPLETED", "SUCCESS", "PAID"}:
             final_status = "SUCCESS"
 
@@ -724,8 +730,9 @@ async def route_mobile_money(req: MobileMoneyRequest):
             final_status = "FAILED"
 
         else:
+
             # --------------------------
-            # STEP 3: SECOND WAIT (30s)
+            # STEP 3: SECOND WAIT
             # --------------------------
             await asyncio.sleep(30)
 
@@ -755,18 +762,40 @@ async def route_mobile_money(req: MobileMoneyRequest):
             req.amount,
             final_status,
             payload["operator"],
-            payload["reference"]
+            reference
         )
 
         # --------------------------
-        # STEP 5: frontend response
+        # STEP 5: Send Notification
         # --------------------------
+        try:
+
+            notification_url = f"https://your-api-domain.com/notification/{req.university}/payment/status"
+
+            notification_payload = {
+                "student_id": req.student_id,
+                "amount": req.amount,
+                "status": final_status,
+                "operator": payload["operator"],
+                "reference": reference
+            }
+
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(notification_url, json=notification_payload)
+
+        except Exception as notify_error:
+            logger.warning(f"[MobileMoney] Notification failed: {notify_error}")
+
+        # --------------------------
+        # STEP 6: Frontend response
+        # --------------------------
+
         if final_status == "SUCCESS":
             return {
                 "status": True,
                 "message": "Payment successful",
                 "data": {
-                    "reference": payload["reference"],
+                    "reference": reference,
                     "lenco_id": lenco_id
                 }
             }
@@ -776,7 +805,7 @@ async def route_mobile_money(req: MobileMoneyRequest):
                 "status": False,
                 "message": "Payment failed",
                 "data": {
-                    "reference": payload["reference"],
+                    "reference": reference,
                     "lenco_id": lenco_id
                 }
             }
@@ -786,15 +815,18 @@ async def route_mobile_money(req: MobileMoneyRequest):
                 "status": False,
                 "message": "Payment failed: no user response",
                 "data": {
-                    "reference": payload["reference"],
+                    "reference": reference,
                     "lenco_id": lenco_id
                 }
             }
 
     except Exception as e:
         logger.error(f"[MobileMoney] Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Mobile money collection failed: {str(e)}")
 
+        raise HTTPException(
+            status_code=500,
+            detail=f"Mobile money collection failed: {str(e)}"
+        )
 
 
 # Reuse db from core.firebase or firestore_adapter
