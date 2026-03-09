@@ -441,6 +441,88 @@ async def notify_student_arrival(
         }
         db.collection("USERS").document(university).collection("notifications").add(notif_data)
 
+
+
+
+# -------------------------
+# Payment status notification
+# -------------------------
+@router.post("/{university}/payment/status")
+async def notify_payment_status(
+    university: str,
+    student_id: str = Body(..., embed=True),
+    amount: float = Body(..., embed=True),
+    status: str = Body(..., embed=True),  # SUCCESS | FAILED | PENDING_TIMEOUT
+    operator: Optional[str] = Body(None, embed=True),
+    reference: Optional[str] = Body(None, embed=True),
+):
+    """
+    Sends a notification to the student when payment status changes.
+    """
+
+    try:
+
+        if status == "SUCCESS":
+            title = "Payment Successful"
+            body = f"Your payment of {amount} via {operator} was successful. Premium is now active."
+
+        elif status == "FAILED":
+            title = "Payment Failed"
+            body = f"Your payment of {amount} via {operator} could not be completed."
+
+        elif status == "PENDING_TIMEOUT":
+            title = "Payment Expired"
+            body = "The payment request expired because no confirmation was received."
+
+        else:
+            raise HTTPException(status_code=400, detail="Invalid payment status")
+
+        # 🔔 Send push notification
+        topic = f"student_{student_id}"
+
+        message = messaging.Message(
+            notification=messaging.Notification(
+                title=title,
+                body=body
+            ),
+            topic=topic,
+            data={
+                "category": "payment",
+                "reference": reference or "",
+                "status": status
+            }
+        )
+
+        fcm_response = messaging.send(message)
+
+        # 🗄 Store notification
+        notif_data = {
+            "title": title,
+            "body": body,
+            "category": "payment",
+            "student_id": student_id,
+            "amount": amount,
+            "operator": operator,
+            "reference": reference,
+            "status": status,
+            "timestamp": datetime.utcnow(),
+            "read_by": []
+        }
+
+        db.collection("USERS")\
+          .document(university)\
+          .collection("notifications")\
+          .add(notif_data)
+
+        return {
+            "message": "Payment notification sent",
+            "status": status,
+            "fcm_response": fcm_response
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Payment notification error: {str(e)}")
+
         return {"message": "Arrival notification sent", "fcm_response": fcm_response}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error sending arrival notification: {str(e)}")
