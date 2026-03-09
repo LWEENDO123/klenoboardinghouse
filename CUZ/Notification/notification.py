@@ -441,6 +441,18 @@ async def notify_student_arrival(
         }
         db.collection("USERS").document(university).collection("notifications").add(notif_data)
 
+        # ✅ Return response
+        return {
+            "message": "Arrival notification sent",
+            "fcm_response": fcm_response
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error sending arrival notification: {str(e)}"
+        )
+
 
 
 
