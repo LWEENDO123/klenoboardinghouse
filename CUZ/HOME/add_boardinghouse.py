@@ -315,6 +315,163 @@ async def create_boardinghouse(
         raise HTTPException(status_code=500, detail=f"Error creating boarding house: {str(e)}")
 
 
+@router.patch("/landlord/update/{id}")
+async def update_boardinghouse(
+    id: str,
+    university: str = Body(...),
+    updates: dict = Body(...),
+    current_user: dict = Depends(get_admin_or_landlord)
+):
+    """
+    Full boarding house update endpoint.
+
+    - Updates boarding house details
+    - Syncs global + university collections
+    - Sends notifications to students
+    """
+
+    try:
+
+        # ----------------------------
+        # Validate ownership
+        # ----------------------------
+        if university != current_user.get("university") and current_user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="University mismatch")
+
+        landlord_id = current_user.get("user_id")
+
+        bh_ref = db.collection("BOARDINGHOUSES").document(id)
+        bh_doc = bh_ref.get()
+
+        if not bh_doc.exists:
+            raise HTTPException(status_code=404, detail="Boarding house not found")
+
+        data = bh_doc.to_dict()
+
+        if data.get("landlord_id") != landlord_id and current_user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="You cannot update this boarding house")
+
+        # ----------------------------
+        # Allowed fields
+        # ----------------------------
+        allowed_fields = {
+            "name",
+            "description",
+            "gallery",
+            "cover_image",
+            "space_description",
+            "conditions",
+            "phone_number",
+            "GPS_coordinates",
+            "yango_coordinates",
+            "public_T",
+            "gender_male",
+            "gender_female",
+            "gender_both",
+            "sharedroom_4", "price_4",
+            "sharedroom_3", "price_3",
+            "sharedroom_2", "price_2",
+            "singleroom", "price_1"
+        }
+
+        update_data = {k: v for k, v in updates.items() if k in allowed_fields}
+
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No valid fields provided")
+
+        update_data["updated_at"] = SERVER_TIMESTAMP
+
+        # ----------------------------
+        # Update global document
+        # ----------------------------
+        bh_ref.update(update_data)
+
+        # ----------------------------
+        # Update university copies
+        # ----------------------------
+        universities = data.get("universities", [])
+
+        for univ in universities:
+            db.collection("HOME").document(univ)\
+                .collection("BOARDHOUSE")\
+                .document(id)\
+                .update(update_data)
+
+        # ----------------------------
+        # Notification logic
+        # ----------------------------
+        bh_name = data.get("name", "A boarding house")
+
+        title = "Boarding House Updated"
+        body = f"{bh_name} has new updates. Tap to view."
+
+        detail_url = f"/home/boardinghouse/{id}"
+
+        for univ in universities:
+
+            premium_topic = f"boardinghouse_{univ}_premium"
+            generic_topic = f"boardinghouse_{univ}_generic"
+
+            # Premium users
+            premium_msg = messaging.Message(
+                notification=messaging.Notification(
+                    title=title,
+                    body=body
+                ),
+                topic=premium_topic,
+                data={
+                    "boardinghouse_id": id,
+                    "detail_url": detail_url
+                }
+            )
+
+            messaging.send(premium_msg)
+
+            # Generic users
+            generic_msg = messaging.Message(
+                notification=messaging.Notification(
+                    title="Boarding House Update",
+                    body="A boarding house near you has new updates."
+                ),
+                topic=generic_topic,
+                data={
+                    "boardinghouse_id": id
+                }
+            )
+
+            messaging.send(generic_msg)
+
+        # ----------------------------
+        # Store notification record
+        # ----------------------------
+        notif_data = {
+            "title": title,
+            "body": body,
+            "category": "boardinghouse",
+            "boardinghouse_id": id,
+            "detail_url": detail_url,
+            "timestamp": datetime.utcnow(),
+            "read_by": []
+        }
+
+        for univ in universities:
+            db.collection("USERS")\
+                .document(univ)\
+                .collection("notifications")\
+                .add(notif_data)
+
+        return {
+            "message": "Boarding house updated successfully",
+            "boardinghouse_id": id,
+            "updated_fields": list(update_data.keys())
+        }
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Update failed: {str(e)}")
+
+
 # ---------------------------
 # LANDLORD: Update availability
 # ---------------------------
