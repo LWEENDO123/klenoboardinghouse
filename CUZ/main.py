@@ -329,6 +329,73 @@ async def debug_bucket_meta(key: str):
         return {"error": str(e)}
 
 
+async def scan_premium_status_changes():
+    """
+    Checks all students and notifies them if their premium status
+    changed since the last notification.
+    """
+
+    try:
+
+        universities = ["CUZ", "UNZA", "CBU"]
+
+        for uni in universities:
+
+            students_ref = (
+                db.collection("USERS")
+                .document(uni)
+                .collection("students")
+            )
+
+            students = students_ref.stream()
+
+            for student in students:
+
+                data = student.to_dict() or {}
+                student_id = student.id
+
+                premium = bool(data.get("premium", False))
+                last_notified = data.get("last_premium_notified")
+                fcm_token = data.get("fcm_token")
+
+                if premium != last_notified:
+
+                    if fcm_token:
+
+                        if premium:
+                            title = "Premium Activated"
+                            body = "Your premium access has been activated."
+                        else:
+                            title = "Premium Expired"
+                            body = "Your premium access has expired."
+
+                        message = messaging.Message(
+                            notification=messaging.Notification(
+                                title=title,
+                                body=body
+                            ),
+                            token=fcm_token
+                        )
+
+                        try:
+                            messaging.send(message)
+                            logger.info(
+                                f"[PREMIUM SCAN] Notification sent to {student_id}"
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"[PREMIUM SCAN] FCM error for {student_id}: {e}"
+                            )
+
+                    student.reference.update({
+                        "last_premium_notified": premium,
+                        "premium_last_checked": datetime.utcnow().isoformat()
+                    })
+
+    except Exception as e:
+        logger.exception("[PREMIUM SCAN] Failed: %s", e)
+
+
 
 
 
@@ -385,16 +452,20 @@ async def run_premium_expiry_check():
 # Startup scheduled job
 @app.on_event("startup")
 async def startup_event():
-    """
-    Scheduler starts on app startup. If you want to seed CONFIG/jwt or other
-    Firestore documents, do it here (synchronously or via asyncio.to_thread).
-    """
+
     scheduler = AsyncIOScheduler()
 
-    # Existing premium expiry check
+    # Premium expiry check
     scheduler.add_job(check_and_update_premium_expiry, "interval", days=1)
 
-    # Run event notifications daily at 07:00 for each university
+    # Premium status scanner (NEW)
+    scheduler.add_job(
+        scan_premium_status_changes,
+        "interval",
+        hours=1
+    )
+
+    # Event notifications
     for uni in ["CUZ", "UNZA", "CBU"]:
         scheduler.add_job(
             lambda u=uni: asyncio.create_task(notify_upcoming_events(u)),
@@ -403,7 +474,8 @@ async def startup_event():
         )
 
     scheduler.start()
-    logger.info("[SCHEDULER] Premium expiry + event notifications scheduled daily.")
+
+    logger.info("[SCHEDULER] Premium expiry + premium scan + event notifications scheduled.")
 
 # ------------------------------
 # Payment Test Model
